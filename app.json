@@ -1,0 +1,23 @@
+{
+  "darkmode": true,
+  "themeLocation": "theme.json",
+  "pages": [
+    "pages/index/index"
+  ],
+  "entryPagePath": "pages/index/index",
+  "requiredBackgroundModes": ["audio"],
+  "window": {
+    "navigationBarTitleText": "BBBUG",
+    "navigationBarTextStyle": "@navigationBarTextStyle",
+    "backgroundColor": "@backgroundColor",
+    "backgroundTextStyle": "@backgroundTextStyle",
+    "backgroundColorTop": "@backgroundColorTop",
+    "backgroundColorBottom": "@backgroundColorBottom",
+    "navigationBarBackgroundColor": "@navigationBarBackgroundColor",
+    "navigationStyle": "default"
+  },
+  "sitemapLocation": "sitemap.json",
+  "plugins": {
+  },
+  "resizable": true
+}
