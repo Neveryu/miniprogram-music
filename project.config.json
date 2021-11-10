@@ -22,9 +22,9 @@
     "uploadWithSourceMap": true,
     "compileHotReLoad": true,
     "lazyloadPlaceholderEnable": false,
-    "useMultiFrameRuntime": true,
-    "useApiHook": true,
-    "useApiHostProcess": true,
+    "useMultiFrameRuntime": false,
+    "useApiHook": false,
+    "useApiHostProcess": false,
     "babelSetting": {
       "ignore": [],
       "disablePlugins": [],
@@ -40,8 +40,8 @@
   },
   "compileType": "miniprogram",
   "libVersion": "2.19.2",
-  "appid": "wx376560fc7dfda9f6",
-  "projectname": "我的音乐吧",
+  "appid": "wx652ce078b8271b28",
+  "projectname": "音为有你",
   "debugOptions": {
     "hidedInDevtools": []
   },

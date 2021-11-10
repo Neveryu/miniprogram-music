@@ -1,316 +1,511 @@
+import config from '../../config/index.js'
+import api from '../../config/api.js'
+import { config as reqConfig } from '../../utils/request.js'
 const app = getApp()
-// var WechatSI = requirePlugin("WechatSI");
-// let WechatRecord = WechatSI.getRecordRecognitionManager();
+// var WechatSI = requirePlugin("WechatSI")
+// let WechatRecord = WechatSI.getRecordRecognitionManager()
 Page({
   data: {
-    isCarMode: false,
-    audioPlayer: false,
-    bgPlayer: false,
-    newsList: [],
+    // 值应为某子元素id（id不能以数字开头）。设置哪个方向可滚动，则在哪个方向滚动到该元素
+    bbbug_view_scroll: '',
     isThisShow: false,
-    newsShow: true,
-    isPanelShow: false,
+    isEmojiBoxShow: false,
     isMusicPlaying: true,
-    systemInfo: {},
-    message: "",
+    message: '',
     simplePlayer: true,
     musicLrcObj: [],
-    lrcString: "",
+    lrcString: '',
     showPasswordForm: false,
-    placeholderDefault: "说点什么吧...",
-    placeholderSearchImage: "关键词搜索表情",
-    messageButtonTitleSend: "send",
-    messageButtonTitleSearch: "search",
-    messagePlaceHolder: "",
-    messageConfirmHold: true,
-    messageFocus: false,
     isScrollEnabled: true,
-    imageList: [],
     emojiList: [],
-    messageSendButton: "send",
-    isEmojiBoxShow: false,
-    isSystemEmoji: true,
-    room_id: 0,
-    default_room: 888,
-    bottomHeight: 0,
-    room_password: "",
-    bbbug_view_id: "",
-    bbbug_view_scroll: "",
-    userInfo: {},
-    roomInfo: {},
-    songInfo: false,
+    imageList: [],
+    isSystemEmoji: false,
+    isPanelShow: false,
+    messagePlaceHolder: config.placeholderDefault,
+    messageFocus: false,
+    messageSendButton: 'send',
+    messageConfirmHold: true,
     atMessageObj: false,
+    messageList: [],
+    historyMax: 20,
+    bottomHeight: 0,
+    default_room: 10865,
+    room_id: 0,
+    room_password: '',
+    bbbug_view_id: '',
+    bbbug_view_scroll: '',
     websocket: {
-      url: "",
+      url: '',
       task: null,
       connected: false,
       forceStop: false,
       reconnectTimer: false,
       heartBeatTimer: false
     },
-    messageList: [],
-    historyMax: 20,
-    touchStartTime: 0,
-    touchEndTime: 0,
-    touchStartPostion: false,
-    isDoubleClick: false,
-    isTouchMoved: false,
-    touchTimer: false,
-    clickTimer: false,
-    enableTouchEnd: false,
-    isRecording: false,
+    bgPlayer: null,
+    audioPlayer: null,
+    userInfo: null,
+    roomInfo: null,
+    songInfo: null
   },
-  setSimplePlayer() {
-    wx.vibrateShort();
+  onLoad(options) {
+    // 初始化emoji列表
+    this.data.emojiList = config.emojiList
+    // 响应token变化
+    app.watchAccessToken(() => {
+      this.getMyInfo()
+    })
+    // 初始化一个背景音频管理器；小程序切入后台，如果音频处于播放状态，可以继续播放。但是后台状态不能通过调用API操纵音频的播放状态。
+    this.data.bgPlayer = wx.getBackgroundAudioManager()
+    if (options && options.scene) {
+      wx.setStorageSync('room_id', options.scene)
+    } else if (options && options.room_id) {
+      wx.setStorageSync('room_id', options.room_id)
+    }
+    // this.data.bottomHeight = app.systemInfo.safeArea.bottom - app.systemInfo.safeArea.height + 40
+    /**
+     * 因为bottomHeight在dom初始化中已经使用了，所以这里要修改它实现响应式变化，必须使用setData
+     * 否则，在onload中是可以直接使用this.data.xxx的形式来赋值的。
+     */
     this.setData({
-      simplePlayer: !this.data.simplePlayer
-    });
-  },
-  enableScroll() {
-    this.setData({
-      isScrollEnabled: true,
-    });
-    this.autoScroll();
-  },
-  touchStarted(e) {
-    let that = this;
-    that.data.touchStartTime = e.timeStamp;
-    that.data.isTouchMoved = false;
-    that.data.touchStartPostion = e.touches ? e.touches[0] : false;
-    clearTimeout(that.data.touchTimer);
-    that.data.touchTimer = setTimeout(function () {
-      that.data.enableTouchEnd = false;
-      if (!that.data.isTouchMoved) {
-        that.longTapToAtUser(e.mark.user);
-      }
-    }, 500);
-    that.data.enableTouchEnd = true;
+      bottomHeight: app.systemInfo.safeArea.bottom - app.systemInfo.safeArea.height + 40
+    })
+    // 初始化房间号
+    this.data.room_id = wx.getStorageSync('room_id') || this.data.default_room
 
-    if (that.data.touchStartTime - that.data.touchEndTime < 300) {
-      that.data.isDoubleClick = true;
-      clearTimeout(that.data.clickTimer);
-    } else {
-      that.data.isDoubleClick = false;
-    }
-  },
-  footerTapedToFocus() {
-    if (this.data.systemInfo.platform != 'android') {
-      this.setData({
-        messageFocus: true
-      });
-    }
-  },
-  messageBlured(e) {
-    if (this.data.messageFocus) {
-      this.setData({
-        messageFocus: false,
-      });
-      wx.hideKeyboard();
-    }
-  },
-  messageChanged(e) {
-    // this.setData({
-    //   message: e.detail.value,
-    // });
-  },
-  messageFocused(e) {
-    if (!this.data.messageFocus) {
-      if (this.data.isEmojiBoxShow) {
-        this.setData({
-          imageList: [],
-        });
-      }
-    }
-  },
-  touchMoving(e) {
-    let that = this;
-    if (e.touches && (e.touches[0].pageX != that.data.touchStartPostion.pageX || e.touches[0].pageY != that.data.touchStartPostion.pageY))
-      that.data.isTouchMoved = true;
-  },
-  touchEnded(e) {
-    let that = this;
-    that.data.touchEndTime = e.timeStamp;
-    clearTimeout(that.data.touchTimer);
-    if (that.data.isTouchMoved) {
-      return;
-    }
-    if (that.data.enableTouchEnd) {
-      this.data.clickTimer = setTimeout(function () {
-        if (that.data.isDoubleClick) {
-          that.doTouchUser(e.mark.user.user_id);
-        } else {
-          if (!that.data.isTouchMoved) {
-            that.userTap(e.mark.user);
-          }
-        }
-        that.data.isDoubleClick = false;
-      }, 300);
-    }
-  },
-  doTouchUser(user_id) {
-    let that = this;
-    app.request({
-      url: "message/touch",
-      data: {
-        at: user_id,
-        room_id: that.data.room_id
-      },
-      success(res) {
-        wx.vibrateLong();
-      }
-    });
-  },
-  messageListScrolling(e) {
-    let res = wx.getSystemInfoSync();
-    if (res.windowHeight + 50 < e.detail.scrollHeight - e.detail.scrollTop) {
-      this.setData({
-        isScrollEnabled: false
-      });
-    } else {
-      this.setData({
-        isScrollEnabled: true
-      });
-    }
-  },
-  onLoad: function (options) {
-    let that = this;
-    that.data.bgPlayer = wx.getBackgroundAudioManager();
-    const updateManager = wx.getUpdateManager()
-    updateManager.onUpdateReady(function () {
-      updateManager.applyUpdate()
-    });
-    updateManager.onUpdateFailed(function () {});
-    app.watchAccessToken(function () {
-      that.getMyInfo();
-    });
-    if (options.scene) {
-      wx.setStorageSync('room_id', options.scene);
-    } else if (options.room_id) {
-      wx.setStorageSync('room_id', options.room_id);
-    }
-    let emojiList = [];
-    for (let i = 1; i <= 30; i++) {
-      emojiList.push("/res/Emojis/" + i + ".png");
-    }
-    let systemInfo = wx.getSystemInfoSync();
-    this.setData({
-      bottomHeight: systemInfo.safeArea.bottom - systemInfo.safeArea.height + 40,
-      emojiList: emojiList,
-      imageList: emojiList,
-      systemInfo: systemInfo,
-      messagePlaceHolder: this.data.placeholderDefault,
-    });
-    let room_id = wx.getStorageSync('room_id') || this.data.default_room;
-    this.setData({
-      room_id: room_id
-    });
-    let access_token = wx.getStorageSync('access_token') || false;
-    if (!access_token) {
-      access_token = app.globalData.guestUserInfo.access_token;
-      this.setData({
-        userInfo: app.globalData.guestUserInfo
-      });
-    }
-
-    let plat = systemInfo.platform.toLowerCase();
+    let plat = app.systemInfo.platform.toLowerCase()
     if (plat == 'windows' || plat == 'mac') {
       wx.redirectTo({
         url: '../pc/index?bbbug=' + app.globalData.systemVersion + '&url=' + encodeURIComponent('https://bbbug.com'),
       });
-      wx.hideHomeButton();
-      return;
+      wx.hideHomeButton()
+      return
     }
-    wx.setStorageSync('access_token', access_token);
-    app.request({
-      url: "",
-      success(res) {
-        if (res.data.success) {
-          that.setData({
-            newsShow: false
-          });
-          app.globalData.systemVersion = res.data.systemVersion;
-          wx.setStorageSync('loadSuccess', 1);
-          that.getMyInfo();
-        } else {
-          that.setData({
-            newsList: res.data.data,
-            newsShow: true
-          });
-          wx.setNavigationBarTitle({
-            title: '每日推荐',
-          });
-          wx.showToast({
-            title: '已更新',
-          });
-          that.data.bgPlayer.src = 'http://img02.tuke88.com/newpreview_music/09/01/43/5c89e6ded0ebf83768.mp3';
-          that.data.bgPlayer.title = "背景音乐";
-          that.data.bgPlayer.play();
-        }
-      }
-    });
-    that.data.bgPlayer.onTimeUpdate(function (e) {
-      if (that.data.songInfo) {
-        if (that.data.musicLrcObj) {
-          for (let i = 0; i < that.data.musicLrcObj.length; i++) {
-            if (i == that.data.musicLrcObj.length - 1) {
-              that.setData({
-                lrcString: that.data.musicLrcObj[i].lineLyric
-              });
-              return;
+    /**
+     * 监听背景音频播放进度更新事件，只有小程序在前台时会回调。
+     * 这里用户歌词的轮动显示
+     */
+    this.data.bgPlayer.onTimeUpdate( (e) => {
+      if (this.data.songInfo) {
+        if (this.data.musicLrcObj) {
+          for (let i = 0; i < this.data.musicLrcObj.length; i++) {
+            if (i == this.data.musicLrcObj.length - 1) {
+              this.setData({
+                lrcString: this.data.musicLrcObj[i].lineLyric
+              })
+              return
             } else {
-              if (that.data.bgPlayer.currentTime > that.data.musicLrcObj[i].time && that.data.bgPlayer.currentTime < that.data.musicLrcObj[i + 1].time) {
-                that.setData({
-                  lrcString: that.data.musicLrcObj[i].lineLyric
-                });
-                return;
+              if (this.data.bgPlayer.currentTime > this.data.musicLrcObj[i].time && this.data.bgPlayer.currentTime < this.data.musicLrcObj[i + 1].time) {
+                this.setData({
+                  lrcString: this.data.musicLrcObj[i].lineLyric
+                })
+                return
               }
             }
           }
         }
       }
-    });
-    that.data.bgPlayer.onPrev(function () {
-      if (that.data.isCarMode) {
+    })
+    /**
+     * 监听用户在系统音乐播放面板点击上一曲事件（仅iOS）
+     */
+    this.data.bgPlayer.onPrev(() => {
+      if (this.data.isCarMode) {
         app.request({
-          url: "song/addMySong",
+          url: 'song/addMySong',
           data: {
             room_id: app.globalData.roomInfo.room_id,
-            mid: that.data.songInfo.song.mid,
+            mid: this.data.songInfo.song.mid,
           },
-          loading: "收藏中",
-          success: function (res) {
-            that.say(res.msg);
+          loading: '收藏中',
+          success: (res) => {
+            this.say(res.msg)
           },
           error(res) {
-            that.say(res.msg);
-            return true;
+            this.say(res.msg)
+            return true
           }
-        });
+        })
       }
-    });
-    that.data.bgPlayer.onNext(function () {
-      if (!that.data.isCarMode) {
-        return;
+    })
+    /**
+     * 监听用户在系统音乐播放面板点击下一曲事件（仅iOS）
+     */
+    this.data.bgPlayer.onNext(function () {
+      if (!this.data.isCarMode) {
+        return
       }
       app.request({
-        url: "song/pass",
+        url: 'song/pass',
         data: {
           room_id: app.globalData.roomInfo.room_id,
-          mid: that.data.songInfo.song.mid,
+          mid: this.data.songInfo.song.mid,
         },
-        success: function (res) {
-          that.say(res.msg);
+        success: (res) => {
+          this.say(res.msg)
         },
         error() {
-          return true;
-        },
-      });
-    });
-    that.data.audioPlayer = wx.createInnerAudioContext({
+          return true
+        }
+      })
+    })
+    
+    // 创建内部 audio 上下文 InnerAudioContext 对象
+    this.data.audioPlayer = wx.createInnerAudioContext({
       useWebAudioImplement: true
+    })
+    // 初始化，获取当前登录用户的信息
+    this.getMyInfo()
+  },
+  setSimplePlayer() {
+    wx.vibrateShort()
+    this.setData({
+      simplePlayer: !this.data.simplePlayer
+    })
+  },
+  /**
+   * @param {*} reloadRoom 
+   */
+  getMyInfo(reloadRoom = true) {
+    wx.showNavigationBarLoading()
+    app.request({
+      url: api.getMyInfo,
+      success: (res) => {
+        this.setData({
+          userInfo: res.data
+        });
+        app.globalData.userInfo = res.data
+        app.globalData.access_token_changed = false
+        wx.hideNavigationBarLoading()
+        if (reloadRoom) {
+          this.getRoomInfo()
+        }
+        app.alertChangeInfo()
+      },
+      error(res) {
+        wx.hideNavigationBarLoading()
+      }
+    })
+  },
+  /**
+   * 获取房间信息，包括message列表
+   */
+  getRoomInfo() {
+    wx.showNavigationBarLoading()
+    this.setData({
+      showPasswordForm: false
+    })
+    app.request({
+      url: api.getRoomInfo,
+      data: {
+        room_id: this.data.room_id,
+        room_password: this.data.room_password
+      },
+      success: (res) => {
+        wx.hideNavigationBarLoading()
+        wx.hideLoading()
+        this.setData({
+          roomInfo: res.data
+        })
+        app.globalData.roomInfo = res.data
+        if (this.data.isThisShow) {
+          wx.setNavigationBarTitle({
+            title: res.data.room_name
+          })
+        }
+        this.getWebsocketUrl()
+        this.getMessageList()
+      },
+      error: (res) => {
+        wx.hideNavigationBarLoading()
+        if (res.code == 302) {
+          this.setData({
+            showPasswordForm: true,
+            room_password: ''
+          })
+          return true
+        }
+      }
+    })
+  },
+  getWebsocketUrl() {
+    wx.showNavigationBarLoading()
+    app.request({
+      url: api.getWebsocketUrl,
+      data: {
+        channel: this.data.room_id,
+      },
+      success: (res) => {
+        wx.hideNavigationBarLoading()
+        // this.data.websocket.url = 'wss://websocket.bbbug.com?account=' + res.data.account + "&channel=" + res.data.channel + "&ticket=" + res.data.ticket
+        this.data.websocket.url = `wss://websocket.bbbug.com?account=${res.data.account}&channel=${res.data.channel}&ticket=${res.data.ticket}`
+        this.connectWebsocket()
+      },
+      error(res) {
+        wx.hideNavigationBarLoading()
+      }
+    })
+  },
+  connectWebsocket() {
+    if (this.data.websocket.connected) {
+      this.data.websocket.forceStop = true
+      this.data.websocket.task.send({
+        data: 'bye'
+      })
+      this.data.websocket.reconnectTimer = setTimeout(() => {
+        this.connectWebsocket()
+        console.log('waiting')
+      }, 100)
+    } else {
+      this.data.websocket.task = wx.connectSocket({
+        url: this.data.websocket.url,
+      })
+      this.data.websocket.task.onOpen(() => {
+        this.data.websocket.forceStop = false
+        this.data.websocket.connected = true
+        // 原代码心跳实现不健壮，几乎等于没实现，暂时注释掉下面一行
+        this.websocketHeartBeat()
+      })
+      this.data.websocket.task.onMessage((data) =>{
+        let msg = false
+        try {
+          msg = JSON.parse(data.data)
+        } catch (err) {
+          return
+        }
+        if (msg) {
+          this.messageController(msg)
+        }
+      })
+      this.data.websocket.task.onClose(() => {
+        this.data.websocket.connected = false
+        this.data.websocket.task = null
+        if (!this.data.websocket.forceStop) {
+          this.reconnectWebsocket()
+        }
+      })
+    }
+  },
+  websocketHeartBeat() {
+    if (this.data.websocket.connected) {
+      this.data.websocket.task.send({
+        data: 'heartBeat'
+      })
+      clearTimeout(this.data.websocket.heartBeatTimer)
+      this.data.websocket.heartBeatTimer = setTimeout(() => {
+        this.websocketHeartBeat()
+      }, 10000)
+    }
+  },
+  reconnectWebsocket() {
+    if (!this.data.websocket.connected) {
+      this.connectWebsocket()
+    }
+  },
+  messageController(msg) {
+    console.log('长链接发送过来的数据：', msg)
+    let msgString = ''
+    switch (msg.type) {
+      case 'touch':
+        msgString = decodeURIComponent(msg.user.user_name) + ' 摸了摸 ' + decodeURIComponent(msg.at.user_name) + msg.at.user_touchtip
+        this.addSystemMessage(msgString)
+        if (msg.at) {
+          if (msg.at.user_id == this.data.userInfo.user_id) {
+            wx.vibrateLong()
+          }
+        }
+        break
+      case 'join':
+        msg.content = msg.content
+        msg.type = 'system'
+        this.addMessageToList(msg)
+        this.say(msg.content)
+        break
+      case 'text':
+      case 'img':
+      case 'link':
+      case 'jump':
+      case 'system':
+        if (msg.type == 'text') {
+          try {
+            msg.content = (decodeURIComponent(msg.content))
+          } catch (e) {
+            msg.content = (msg.content)
+          }
+          if (msg.at) {
+            msgString = decodeURIComponent(msg.user.user_name) + '对' + decodeURIComponent(msg.at.user_name) + '说：' + decodeURIComponent(msg.content)
+            msg.content = '@' + decodeURIComponent(msg.at.user_name) + ' ' + msg.content
+          } else {
+            msgString = decodeURIComponent(msg.user.user_name) + '说：' + decodeURIComponent(msg.content)
+          }
+          this.say(msgString)
+          for (let i = 0; i < this.data.messageList.length; i++) {
+            if (this.data.messageList[i].loading) {
+              this.data.messageList.splice(i, 1)
+            }
+          }
+        }
+        this.addMessageToList(msg)
+        break
+      case 'addSong':
+        if (msg.at) {
+          msgString = decodeURIComponent(msg.user.user_name) + ' 送了一首《' + msg.song.name + '》给 ' +
+            decodeURIComponent(msg.at.user_name)
+          this.addSystemMessage(msgString)
+          this.say(msgString)
+        } else {
+          msgString = decodeURIComponent(msg.user.user_name) + ' 点了一首《' + msg.song.name + '》'
+          this.addSystemMessage(msgString)
+          this.say(msgString)
+        }
+        break
+      case 'pass':
+        msgString = decodeURIComponent(msg.user.user_name) + ' 切掉了《' + msg.song.name + '》'
+        this.addSystemMessage(msgString, '#ff4500')
+        this.say(msgString)
+        break
+      case 'push':
+        msgString = decodeURIComponent(msg.user.user_name) + ' 将歌曲 《' + msg.song.name + '》 设为置顶候播放'
+        this.addSystemMessage(msgString)
+        this.say(msgString)
+        break
+      case 'removeSong':
+        msgString = decodeURIComponent(msg.user.user_name) + ' 将歌曲 《' + msg.song.name + '》 从队列移除'
+        this.addSystemMessage(msgString)
+        this.say(msgString)
+        break
+      case 'removeban':
+        msgString = decodeURIComponent(msg.user.user_name) + ' 将 ' + decodeURIComponent(msg.ban.user_name) + ' 解禁'
+        this.addSystemMessage(msgString)
+        this.say(msgString)
+        break
+      case 'shutdown':
+        msgString = decodeURIComponent(msg.user.user_name) + ' 禁止了用户 ' + decodeURIComponent(msg.ban.user_name) + ' 发言'
+        this.addSystemMessage(msgString)
+        this.say(msgString)
+        break
+      case 'songdown':
+        msgString = decodeURIComponent(msg.user.user_name) + ' 禁止了用户 ' + decodeURIComponent(msg.ban.user_name) + ' 点歌'
+        this.addSystemMessage(msgString)
+        this.say(msgString)
+        break
+      case 'back':
+        for (let i = 0; i < this.data.messageList.length; i++) {
+          if (this.data.messageList[i].message_id == msg.message_id) {
+            this.data.messageList.splice(i, 1)
+            break
+          }
+        }
+        this.setData({
+          messageList: this.data.messageList
+        });
+        msgString = decodeURIComponent(msg.user.user_name) + ' 撤回了一条消息'
+        this.addSystemMessage(msgString)
+        this.say(msgString)
+        break
+      case 'playSong':
+        if (msg && msg.song && msg.user) {
+          this.playMusic(msg)
+        }
+        break
+      case 'all':
+        this.addSystemMessage(msg.content)
+        break
+      case 'online':
+        if (this.data.isThisShow) {
+          wx.setNavigationBarTitle({
+            title: this.data.roomInfo.room_name + '(' + msg.data.length + ')'
+          })
+        }
+        break
+      case 'roomUpdate':
+        this.getRoomInfo()
+        break
+      default:
+        console.log('消息未解析')
+    }
+    this.autoScroll()
+  },
+  // 歌词
+  getMusicLrc() {
+    this.setData({
+      musicLrcObj: [],
+      lrcString: '歌词读取中...'
+    })
+    app.request({
+      url: 'song/getLrc',
+      data: {
+        mid: this.data.songInfo.song.mid
+      },
+      success: (res) => {
+        this.setData({
+          musicLrcObj: res.data,
+          lrcString: '歌词加载中...'
+        })
+      }
+    })
+  },
+  // 播放音乐
+  playMusic(msg) {
+    this.setData({
+      songInfo: msg
+    })
+    this.getMusicLrc()
+    for (let i = 0; i < this.data.messageList.length; i++) {
+      if (this.data.messageList[i].type == 'play') {
+        this.data.messageList.splice(i, 1);
+        break
+      }
+    }
+    this.data.messageList.push({
+      type: 'play',
+      data: msg
+    })
+    this.setData({
+      messageList: this.data.messageList
+    })
+    this.data.bgPlayer.src = reqConfig.apiUrl + '/song/playurl?mid=' + msg.song.mid
+    this.data.bgPlayer.title = msg.song.name + ' - ' + msg.song.singer
+    this.data.bgPlayer.singer = '点歌人: ' + decodeURIComponent(msg.user.user_name) + ' ' + this.data.roomInfo.room_name + ' '
+    this.data.bgPlayer.coverImgUrl = msg.song.pic
+    this.data.bgPlayer.webUrl = msg.song.pic
+    this.data.bgPlayer.seek(parseInt(new Date().valueOf() / 1000) - msg.since)
+    if (this.data.isMusicPlaying) {
+      this.addSystemMessage('正在播放 ' + decodeURIComponent(msg.user.user_name) + ' 点的 ' + msg.song.name + '(' + msg.song.singer + ')')
+      this.data.bgPlayer.play()
+    } else {
+      this.data.bgPlayer.stop()
+    }
+  },
+  // 添加系统消息
+  addSystemMessage(msg) {
+    this.addMessageToList({
+      type: 'system',
+      content: msg,
     });
   },
+  addMessageToList(msg) {
+    if (this.data.messageList.length > this.data.historyMax) {
+      this.data.messageList.shift()
+    }
+    this.data.messageList.push(msg)
+    this.setData({
+      messageList: this.data.messageList
+    })
+    this.autoScroll()
+  },
+  autoScroll() {
+    if (!this.data.isScrollEnabled) {
+      return
+    }
+    let view_id = 'view_id_' + parseInt(Math.random() * 10000000)
+    this.setData({
+      bbbug_view_id: view_id,
+      bbbug_view_scroll: view_id
+    })
+  },
   say(str) {
+    return
     let that = this;
     if (!that.data.isCarMode) {
       return;
@@ -326,1070 +521,407 @@ Page({
       }
     })
   },
-  doPasswordSubmit(e) {
-    this.setData({
-      room_password: e.detail.value.password
-    });
-    this.getRoomInfo();
-  },
-  tapToAddSong() {
-    let that = this;
+  // 获取当前房间的消息
+  getMessageList() {
     app.request({
-      url: "song/addMySong",
+      url: api.getMessageList,
       data: {
-        room_id: app.globalData.roomInfo.room_id,
-        mid: that.data.songInfo.song.mid,
+        room_id: this.data.room_id,
+        per_page: this.data.historyMax
       },
-      loading: "收藏中",
-      success: function (res) {
-        that.say(res.msg);
-      },
-      error(res) {
-        that.say(res.msg);
-        return true;
-      }
-    });
-  },
-  openNewsDetail(e) {
-    let id = e.mark.news_id;
-    wx.navigateTo({
-      url: '../other/detail?news_id=' + id,
-    });
-  },
-  onShow: function () {
-    let that = this;
-    this.data.isThisShow = true;
-  },
-  onHide: function () {
-    this.data.isThisShow = false;
-  },
-  clearAtInfo() {
-    this.setData({
-      atMessageObj: false
-    });
-  },
-  getStaticUrl(str) {
-    if (str.indexOf("https://") == 0 || str.indexOf("http://") == 0) {
-      return str.replace("http://", "https://");
-    } else {
-      return app.globalData.request.cdnUrl + "/uploads/" + str;
-    }
-  },
-  searchImages(message) {
-    let that = this;
-    app.request({
-      url: "attach/search",
-      data: {
-        keyword: message
-      },
-      loading: "搜索中",
-      success(res) {
-        that.setData({
-          imageList: res.data,
-          isSystemEmoji: false
-        });
-      },
-      error() {
-        that.setData({
-          imageList: that.data.emojiList
-        });
-      }
-    });
-  },
-  sendMessage(e) {
-    let that = this;
-    let message = e.detail.value;
-    if (!message) {
-      return;
-    }
-    if (that.data.isEmojiBoxShow) {
-      that.searchImages(message);
-      return;
-    }
-    that.setData({
-      message: ""
-    });
-    let message_send = message;
-    if (that.data.atMessageObj) {
-      message = "@" + decodeURIComponent(that.data.atMessageObj.user_name + " " + message,
-        '');
-    }
-    let msgObj = {
-      type: "text",
-      content: encodeURIComponent(message),
-      where: "channel",
-      at: that.data.atMessageObj,
-      message_id: 0,
-      message_time: 0,
-      loading: true,
-      resource: message,
-      user: that.data.userInfo
-    };
-    that.addMessageToList(msgObj);
-    let atUserInfo = that.data.atMessageObj;
-    that.setData({
-      atMessageObj: false
-    });
-    app.request({
-      url: "message/send",
-      data: {
-        type: 'text',
-        where: "channel",
-        to: that.data.room_id,
-        msg: encodeURIComponent(message_send),
-        at: atUserInfo
-      },
-      success: function (res) {
-        that.setData({
-          atMessageObj: false,
-          isScrollEnabled: true,
-        });
-        that.autoScroll();
-      },
-      error: function (res) {
-        that.setData({
-          message: message
-        });
-      }
-    });
-  },
-  userTap(user) {
-    let that = this;
-    let menu = ['查看主页'];
-    if ((that.data.userInfo.user_admin || that.data.userInfo.user_id == that.data.roomInfo.room_user) && that.data.userInfo.user_id != user.user_id) {
-      menu = ['查看主页', '禁止点歌', '禁止发言', '解除限制'];
-    }
-    wx.showActionSheet({
-      itemList: menu,
-      success(res) {
-        switch (menu[res.tapIndex]) {
-          case '@Ta':
-            that.longTapToAtUser(user);
-            break;
-          case '禁止点歌':
-            app.request({
-              url: 'user/songdown',
-              data: {
-                room_id: that.data.roomInfo.room_id,
-                user_id: user.user_id
-              },
-              loading: "禁言中",
-              success(res) {
-                wx.showToast({
-                  title: res.msg
-                });
-              }
-            });
-            break;
-          case '禁止发言':
-            app.request({
-              url: 'user/shutdown',
-              data: {
-                room_id: that.data.roomInfo.room_id,
-                user_id: user.user_id
-              },
-              loading: "禁言中",
-              success(res) {
-                wx.showToast({
-                  title: res.msg
-                });
-              }
-            });
-            break;
-          case '解除限制':
-            app.request({
-              url: 'user/removeban',
-              data: {
-                room_id: that.data.roomInfo.room_id,
-                user_id: user.user_id
-              },
-              loading: "解禁中",
-              success(res) {
-                wx.showToast({
-                  title: res.msg
-                });
-              }
-            });
-            break;
-          case '查看主页':
-            wx.navigateTo({
-              url: '../user/profile?bbbug=' + app.globalData.systemVersion + '&user_id=' + user.user_id,
-            })
-            break;
-          default:
-            wx.showToast({
-              title: '即将上线',
-            });
-        }
-      }
-    });
-  },
-  longTapToMessage(e) {
-    let that = this;
-    if (!that.data.userInfo || that.data.userInfo.user_id < 0) {
-      return;
-    }
-    let msg = e.mark.msg;
-    let menuList = ['引用消息'];
-    if (msg.user.user_id == that.data.userInfo.user_id || that.data.userInfo.user_admin || that.data.userInfo.user_id == that.data.roomInfo.room_user) {
-      //我发的消息 我是管理员 我是房主 给撤回按钮
-      menuList.push('撤回消息');
-    }
-    switch (msg.type) {
-      case 'img':
-        // menuList.push('保存大图');
-        break;
-      case 'text':
-        menuList.push('复制文字');
-        break;
-      case 'jump':
-        menuList.push('进入房间');
-        break;
-      case 'link':
-        menuList.push('复制链接');
-        break;
-      default:
-    }
-    wx.vibrateShort();
-    wx.showActionSheet({
-      itemList: menuList,
-      success(res) {
-        switch (menuList[res.tapIndex]) {
-          case '复制文字':
-            let copyData = decodeURIComponent(msg.content);
-            if (msg.at) {
-              copyData = "@" + decodeURIComponent(msg.at.user_name) + " " + copyData;
+      success: (res) => {
+        let messageList = []
+        for (let i = 0; i < res.data.length; i++) {
+          let _obj = false
+          try {
+            _obj = JSON.parse(res.data[i].message_content)
+          } catch (error) {
+            continue
+          }
+          if (_obj) {
+            if (_obj.at) {
+              _obj.content = '@' + _obj.at.user_name + ' ' + _obj.content
             }
-            wx.setClipboardData({
-              data: copyData,
-            });
-            // wx.showToast({
-            //   title: '复制成功',
-            // });
-            break;
-          case '引用消息':
-            that.setData({
-              messageFocus: true,
-              atMessageObj: {
-                user_id: msg.user.user_id,
-                user_name: decodeURIComponent(msg.user.user_name),
-                message: msg
+            _obj.message_time = res.data[i].message_createtime
+            _obj.isAtAll = false
+            if (_obj.type == 'text') {
+              try {
+                _obj.content = (decodeURIComponent(_obj.content))
+              } catch (e) {
+                _obj.content = (_obj.content)
               }
-            });
-            if (!that.data.messageFocus) {
-              that.setData({
-                messageFocus: true
-              });
+              _obj.isAtAll = decodeURIComponent(_obj.content).indexOf('@全体') == 0 && (_obj.user.user_id == this.data.roomInfo.room_user || _obj.user.user_admin) ? true : false
             }
-            break;
-          case '复制链接':
-            wx.setClipboardData({
-              data: decodeURIComponent(msg.link),
-            });
-            break;
-          case '撤回消息':
-            app.request({
-              url: "message/back",
-              loading: "撤回中",
-              data: {
-                message_id: msg.message_id,
-                room_id: that.data.room_id
-              },
-              success(res) {
-
-              }
-            });
-            break;
-          case '进入房间':
-            that.setData({
-              room_id: msg.jump.room_id
-            });
-            that.getRoomInfo();
-            break;
-          default:
-            wx.showToast({
-              title: '即将上线',
-            });
+            messageList.unshift(_obj)
+          }
         }
+        this.setData({
+          messageList: messageList
+        });
+        this.addSystemMessage(this.data.roomInfo.room_notice ? this.data.roomInfo.room_notice : ('欢迎来到' + this.data.roomInfo.room_name + '!'))
+        this.autoScroll()
       }
-    });
-  },
-  longTapToAtUser(user) {
-    this.setData({
-      isPanelShow: false,
-      atMessageObj: {
-        user_id: user.user_id,
-        user_name: decodeURIComponent(user.user_name),
-      }
-    });
-    if (!this.data.messageFocus) {
-      this.setData({
-        messageFocus: true
-      });
-    }
-    wx.vibrateShort();
-  },
-  sendEmoji(e) {
-    let that = this;
-    let url = false;
-    if (e.mark.url.indexOf("/res/Emojis/") > -1) {
-      url = app.globalData.request.cdnUrl + "/images/emoji/" + e.mark.url.replace('/res/Emojis/', '');
-    } else {
-      url = e.mark.url;
-    }
-    url = that.getStaticUrl(url);
-    app.request({
-      url: "message/send",
-      data: {
-        where: 'channel',
-        to: that.data.room_id,
-        type: 'img',
-        msg: url,
-        resource: url,
-      },
-      success(res) {
-        that.hideAllDialog();
-      }
-    });
-  },
-  showOrHideEmojiBox() {
-    if (this.data.isEmojiBoxShow) {
-      this.setData({
-        message: ""
-      });
-    } else {
-      this.setData({
-        imageList: this.data.emojiList,
-        isSystemEmoji: true,
-      });
-    }
-    this.setData({
-      isPanelShow: false,
-      isEmojiBoxShow: !this.data.isEmojiBoxShow,
-    });
-
-    wx.vibrateShort();
-    this.setData({
-      messageFocus: this.data.isEmojiBoxShow ? false : true,
-      messagePlaceHolder: this.data.isEmojiBoxShow ? this.data.placeholderSearchImage : this.data.placeholderDefault,
-      messageSendButton: this.data.isEmojiBoxShow ? this.data.messageButtonTitleSearch : this.data.messageButtonTitleSend,
-      atMessageObj: false,
-    });
+    })
   },
   hideAllDialog() {
     this.setData({
       isEmojiBoxShow: false,
       isPanelShow: false,
-      messagePlaceHolder: this.data.placeholderDefault,
-      messageSendButton: this.data.messageButtonTitleSend
-    });
-    wx.hideKeyboard();
+      messagePlaceHolder: config.placeholderDefault,
+      messageSendButton: config.messageButtonTitleSend
+    })
+    wx.hideKeyboard()
   },
-  previewImage(e) {
-    let that = this;
-    try {
-      e.mark.url = decodeURIComponent(e.mark.url);
-    } catch (e) {
-
-    }
-    if (e.mark.url) {
-      if (e.mark.url.indexOf('images/emoji/') == -1 && e.mark.url.indexOf('/res/Emojis/') == -1) {
-        wx.previewImage({
-          current: that.getStaticUrl(e.mark.url),
-          urls: [
-            that.getStaticUrl(e.mark.url)
-          ],
-        });
-      }
-    }
-  },
-  login() {
-    let that = this;
-    wx.navigateTo({
-      url: '../user/login?bbbug=' + app.globalData.systemVersion
-    });
-  },
-  showSongMenu() {
-    let that = this;
-    let menu = ['收藏到歌单', '切歌&不喜欢'];
-    if (that.data.isMusicPlaying) {
-      menu.push('关闭音乐');
+  showOrHideEmojiBox() {
+    if (this.data.isEmojiBoxShow) {
+      this.setData({
+        message: ''
+      })
     } else {
-      menu.push('打开音乐');
+      this.setData({
+        imageList: this.data.emojiList,
+        isSystemEmoji: true,
+      })
     }
-    wx.showActionSheet({
-      itemList: menu,
-      success(res) {
-        switch (menu[res.tapIndex]) {
-          case '关闭音乐':
-          case '打开音乐':
-            if (that.data.isMusicPlaying) {
-              that.data.bgPlayer.stop();
-              that.setData({
-                isMusicPlaying: false
-              });
-            } else {
-              that.setData({
-                isMusicPlaying: true
-              });
-              that.playMusic(that.data.songInfo);
-            }
-            break;
-          case '收藏到歌单':
-            app.request({
-              url: "song/addMySong",
-              data: {
-                room_id: app.globalData.roomInfo.room_id,
-                mid: that.data.songInfo.song.mid,
-              },
-              loading: "收藏中",
-              success: function (res) {
-                wx.showToast({
-                  title: "收藏成功"
-                });
-              }
-            });
-            break;
-          case '切歌&不喜欢':
-            let type = 'pass';
-            if (that.data.roomInfo.room_user == that.data.userInfo.user_id || that.data.userInfo.user_admin || that.data.songInfo.user.user_id == that.data.userInfo.user_id) {
-              type = 'pass';
-            } else {
-              type = 'vote';
-            }
-            app.request({
-              url: "song/pass",
-              data: {
-                room_id: app.globalData.roomInfo.room_id,
-                mid: that.data.songInfo.song.mid,
-              },
-              loading: type == 'pass' ? '切歌中' : '投票中',
-              success: function (res) {
-                if (type == 'pass') {
-                  wx.showToast({
-                    title: '切歌成功',
-                  });
-                } else {
-                  wx.showModal({
-                    title: "投票成功",
-                    content: res.msg,
-                    showCancel: false,
-                  });
-                }
-              }
-            });
-            break;
-          default:
-        }
-      }
-    });
-  },
-  getMyInfo(reloadRoom = true) {
-    let that = this;
-    wx.showNavigationBarLoading();
-    app.request({
-      url: "user/getmyinfo",
-      success(res) {
-        that.setData({
-          userInfo: res.data
-        });
-        app.globalData.userInfo = res.data;
-        app.globalData.access_token_changed = false;
-        wx.hideNavigationBarLoading();
-        if (reloadRoom) {
-          that.getRoomInfo();
-        }
-        that.alertChangeInfo();
-      },
-      error(res) {
-        wx.hideNavigationBarLoading();
-      }
-    });
-  },
-  getMusicLrc() {
-    let that = this;
-    that.setData({
-      musicLrcObj: [],
-      lrcString: "歌词读取中..."
-    });
-    app.request({
-      url: 'song/getLrc',
-      data: {
-        mid: that.data.songInfo.song.mid
-      },
-      success(res) {
-        that.setData({
-          musicLrcObj: res.data,
-          lrcString: "歌词加载中..."
-        });
-      },
-    });
-  },
-  alertChangeInfo() {
-    let infoChanged = wx.getStorageSync('userInfoChanged') || false;
-    if (!infoChanged && this.data.userInfo.user_id > 0) {
-      wx.showModal({
-        confirmText: "完善资料",
-        cancelText: "不再提示",
-        title: "修改资料",
-        content: "快去完善资料展示自己的个性主页吧",
-        success: function (res) {
-          wx.setStorageSync('userInfoChanged', new Date().valueOf());
-          if (res.confirm) {
-            wx.navigateTo({
-              url: '../user/motify',
-            });
-          }
-        }
-      });
-    }
-  },
-  getRoomInfo() {
-    let that = this;
-    wx.showNavigationBarLoading();
-    that.setData({
-      showPasswordForm: false,
-    });
-    app.request({
-      url: "room/getRoomInfo",
-      data: {
-        room_id: that.data.room_id,
-        room_password: that.data.room_password
-      },
-      success(res) {
-        wx.hideNavigationBarLoading();
-        wx.hideLoading();
-        that.setData({
-          roomInfo: res.data
-        });
-        app.globalData.roomInfo = res.data;
-        if (that.data.isThisShow) {
-          wx.setNavigationBarTitle({
-            title: res.data.room_name,
-          });
-        }
-        that.getWebsocketUrl();
-        that.getMessageList();
-      },
-      error(res) {
-        wx.hideNavigationBarLoading();
-        if (res.code == 302) {
-          that.setData({
-            showPasswordForm: true,
-            room_password: "",
-          });
-          return true;
-        }
-      }
-    });
-  },
-  doEnterDefaultRoom() {
     this.setData({
-      room_id: this.data.default_room
-    });
-    this.getRoomInfo();
-  },
-  getMessageList() {
-    let that = this;
-    app.request({
-      url: "message/getMessageList",
-      data: {
-        room_id: that.data.room_id,
-        per_page: that.data.historyMax,
-      },
-      success(res) {
-        let messageList = [];
-        for (let i = 0; i < res.data.length; i++) {
-          let _obj = false;
-          try {
-            _obj = JSON.parse(res.data[i].message_content);
-          } catch (error) {
-            continue;
-          }
-          if (_obj) {
-            if (_obj.at) {
-              _obj.content = '@' + _obj.at.user_name + " " + _obj.content;
-            }
-            _obj.message_time = res.data[i].message_createtime;
-            _obj.isAtAll = false;
-            if (_obj.type == 'text') {
-              try {
-                _obj.content = (decodeURIComponent(_obj.content));
-              } catch (e) {
-                _obj.content = (_obj.content);
-              }
-              _obj.isAtAll = decodeURIComponent(_obj.content).indexOf('@全体') == 0 && (_obj.user.user_id == that.data.roomInfo.room_user || _obj.user.user_admin) ? true : false;
-            }
-            messageList.unshift(_obj);
-          }
-        }
-        that.setData({
-          messageList: messageList
-        });
-        that.addSystemMessage(that.data.roomInfo.room_notice ? that.data.roomInfo.room_notice : ('欢迎来到' + that.data.roomInfo.room_name + '!'));
-        that.autoScroll();
-      }
-    });
-  },
-  autoScroll() {
-    let that = this;
-    if (!that.data.isScrollEnabled) {
-      return;
-    }
-    let view_id = "view_id_" + parseInt(Math.random() * 10000000);
-    that.setData({
-      bbbug_view_id: view_id
-    });
-    that.setData({
-      bbbug_view_scroll: ""
-    });
-    that.setData({
-      bbbug_view_scroll: view_id
-    });
-  },
-  addSystemMessage(msg) {
-    this.addMessageToList({
-      type: "system",
-      content: msg,
-    });
-  },
-  getWebsocketUrl() {
-    let that = this;
-    wx.showNavigationBarLoading();
-    app.request({
-      url: "room/getWebsocketUrl",
-      data: {
-        channel: that.data.room_id,
-      },
-      success(res) {
-        wx.hideNavigationBarLoading();
-        that.data.websocket.url = 'wss://websocket.bbbug.com?account=' + res.data.account + "&channel=" + res.data.channel + "&ticket=" + res.data.ticket;
-        that.connectWebsocket();
-      },
-      error(res) {
-        wx.hideNavigationBarLoading();
-      }
-    });
-  },
-  connectWebsocket() {
-    let that = this;
-    if (that.data.websocket.connected) {
-      that.data.websocket.forceStop = true;
-      that.data.websocket.task.send({
-        data: 'bye'
-      });
-      that.data.websocket.reconnectTimer = setTimeout(function () {
-        that.connectWebsocket();
-        console.log('waiting');
-      }, 100);
-    } else {
-      that.data.websocket.task = wx.connectSocket({
-        url: that.data.websocket.url,
-      });
-      that.data.websocket.task.onOpen(function () {
-        that.data.websocket.forceStop = false;
-        that.data.websocket.connected = true;
-        that.websocketHeartBeat();
-      });
-      that.data.websocket.task.onMessage(function (data) {
-        let msg = false;
-        try {
-          msg = JSON.parse(data.data);
-        } catch (err) {
-          return;
-        }
-        if (msg) {
-          that.messageController(msg);
-        }
-      });
-      that.data.websocket.task.onClose(function () {
-        that.data.websocket.connected = false;
-        that.data.websocket.task = null;
-        if (!that.data.websocket.forceStop) {
-          that.reconnectWebsocket();
-        }
-      });
-    }
-  },
-  addMessageToList(msg) {
-    let that = this;
-    if (that.data.messageList.length > that.data.historyMax) {
-      that.data.messageList.shift();
-    }
-    that.data.messageList.push(msg);
-    that.setData({
-      messageList: that.data.messageList
-    });
-    that.autoScroll();
-  },
-  reconnectWebsocket() {
-    let that = this;
-    if (!that.data.websocket.connected) {
-      that.connectWebsocket();
-    }
-  },
-  websocketHeartBeat() {
-    let that = this;
-    if (that.data.websocket.connected) {
-      that.data.websocket.task.send({
-        data: "heartBeat"
-      });
-      clearTimeout(that.data.websocket.heartBeatTimer);
-      that.data.websocket.heartBeatTimer = setTimeout(function () {
-        that.websocketHeartBeat();
-      }, 10000);
-    }
-  },
-  messageController(msg) {
-    let that = this;
-    let msgString = "";
-    switch (msg.type) {
-      case 'touch':
-        msgString = decodeURIComponent(msg.user.user_name) + " 摸了摸 " + decodeURIComponent(msg.at.user_name) + msg.at.user_touchtip;
-        that.addSystemMessage(msgString, '#999', '#eee');
-        if (msg.at) {
-          if (msg.at.user_id == that.data.userInfo.user_id) {
-            wx.vibrateLong();
-          }
-        }
-        break;
-      case 'join':
-        msg.content = msg.content;
-        msg.type = 'system';
-        that.addMessageToList(msg);
-        that.say(msg.content);
-        break;
-      case 'text':
-      case 'img':
-      case 'link':
-      case 'jump':
-      case 'system':
-        if (msg.type == 'text') {
-          try {
-            msg.content = (decodeURIComponent(msg.content));
-          } catch (e) {
-            msg.content = (msg.content);
-          }
-          if (msg.at) {
-            msgString = decodeURIComponent(msg.user.user_name) + "对" + decodeURIComponent(msg.at.user_name) + "说：" + decodeURIComponent(msg.content);
-            msg.content = "@" + decodeURIComponent(msg.at.user_name) + " " + msg.content;
-          } else {
-            msgString = decodeURIComponent(msg.user.user_name) + "说：" + decodeURIComponent(msg.content);
-          }
-          that.say(msgString);
-          for (let i = 0; i < that.data.messageList.length; i++) {
-            if (that.data.messageList[i].loading) {
-              that.data.messageList.splice(i, 1);
-            }
-          }
-        }
-        that.addMessageToList(msg);
-        break;
-      case 'addSong':
-        if (msg.at) {
-          msgString = decodeURIComponent(msg.user.user_name) + " 送了一首 《" + msg.song.name + "》 给 " +
-            decodeURIComponent(msg.at.user_name);
-          that.addSystemMessage(msgString, '#333');
-          that.say(msgString);
-        } else {
-          msgString = decodeURIComponent(msg.user.user_name) + " 点了一首《" + msg.song.name + "》";
-          that.addSystemMessage(msgString, '#333');
-          that.say(msgString);
-        }
-
-        break;
-      case 'pass':
-        msgString = decodeURIComponent(msg.user.user_name) + " 切掉了《" + msg.song.name + "》";
-        that.addSystemMessage(msgString, '#ff4500');
-        that.say(msgString);
-        break;
-      case 'push':
-        msgString = decodeURIComponent(msg.user.user_name) + " 将歌曲 《" + msg.song.name + "》 设为置顶候播放";
-        that.addSystemMessage(msgString);
-        that.say(msgString);
-        break;
-      case 'removeSong':
-        msgString = decodeURIComponent(msg.user.user_name) + " 将歌曲 《" + msg.song.name + "》 从队列移除";
-        that.addSystemMessage(msgString);
-        that.say(msgString);
-        break;
-      case 'removeban':
-        msgString = decodeURIComponent(msg.user.user_name) + " 将 " + decodeURIComponent(msg.ban.user_name) +
-          " 解禁";
-        that.addSystemMessage(msgString);
-        that.say(msgString);
-        break;
-      case 'shutdown':
-        msgString = decodeURIComponent(msg.user.user_name) + " 禁止了用户 " + decodeURIComponent(msg.ban.user_name) +
-          " 发言";
-        that.addSystemMessage(msgString);
-        that.say(msgString);
-        break;
-      case 'songdown':
-        msgString = decodeURIComponent(msg.user.user_name) + " 禁止了用户 " + decodeURIComponent(msg.ban.user_name) +
-          " 点歌";
-        that.addSystemMessage(msgString);
-        that.say(msgString);
-        break;
-      case 'back':
-        for (let i = 0; i < that.data.messageList.length; i++) {
-          if (that.data.messageList[i].message_id == msg.message_id) {
-            that.data.messageList.splice(i, 1);
-            break;
-          }
-        }
-        that.setData({
-          messageList: that.data.messageList
-        });
-        msgString = decodeURIComponent(msg.user.user_name) + " 撤回了一条消息";
-        that.addSystemMessage(msgString);
-        that.say(msgString);
-        break;
-      case 'playSong':
-        if (msg && msg.song && msg.user) {
-          that.playMusic(msg);
-        }
-        break;
-      case 'all':
-        that.addSystemMessage(msg.content);
-        break;
-      case 'online':
-        if (that.data.isThisShow) {
-          wx.setNavigationBarTitle({
-            title: that.data.roomInfo.room_name + '(' + msg.data.length + ')',
-          });
-        }
-        break;
-      case 'roomUpdate':
-        that.getRoomInfo();
-        break;
-      default:
-        console.log("消息未解析")
-    }
-    that.autoScroll();
-  },
-  longPressPassTheSong() {
-    let that = this;
-    app.request({
-      url: "song/pass",
-      data: {
-        room_id: app.globalData.roomInfo.room_id,
-        mid: that.data.songInfo.song.mid,
-      },
-      success: function (res) {
-        if (res.msg != "切歌成功") {
-          res.msg = "已发起切歌投票";
-        }
-        that.say(res.msg);
-      },
-      error() {
-        return true;
-      },
-    });
-  },
-  onShareAppMessage() {
-    let that = this;
-    if (that.data.songInfo) {
-      return {
-        title: '正在播放 ' + that.data.songInfo.song.name + '(' + that.data.songInfo.song.singer + ")",
-        path: '/pages/index/index?room_id=' + that.data.room_id
-      };
-    }
-  },
-  playMusic(msg) {
-    let that = this;
-    that.setData({
-      songInfo: msg
-    });
-    that.getMusicLrc();
-    for (let i = 0; i < that.data.messageList.length; i++) {
-      if (that.data.messageList[i].type == 'play') {
-        that.data.messageList.splice(i, 1);
-        break;
-      }
-    }
-    that.data.messageList.push({
-      type: 'play',
-      data: msg
-    });
-    that.setData({
-      messageList: that.data.messageList
-    });
-
-    that.data.bgPlayer.src = app.globalData.request.apiUrl + '/song/playurl?mid=' + msg.song.mid;
-    that.data.bgPlayer.title = msg.song.name + ' - ' + msg.song.singer;
-    that.data.bgPlayer.singer = "点歌人: " + decodeURIComponent(msg.user.user_name) + " " + that.data.roomInfo.room_name + "";
-    that.data.bgPlayer.coverImgUrl = msg.song.pic;
-    that.data.bgPlayer.webUrl = msg.song.pic;
-    that.data.bgPlayer.seek(parseInt(new Date().valueOf() / 1000) - msg.since);
-    if (that.data.isMusicPlaying) {
-      that.addSystemMessage('正在播放 ' + decodeURIComponent(msg.user.user_name) + ' 点的 ' + msg.song.name + '(' + msg.song.singer + ')');
-      that.data.bgPlayer.play();
-    } else {
-      that.data.bgPlayer.stop();
-    }
-  },
-  chooseImage() {
-    let that = this;
-    wx.chooseImage({
-      count: 1,
-      sizeType: 'compressed',
-      success(res) {
-        that.hideAllDialog();
-        wx.showLoading({
-          title: '发送中',
-        });
-        wx.uploadFile({
-          url: app.globalData.request.apiUrl + "attach/uploadImage",
-          filePath: res.tempFilePaths[0],
-          name: 'file',
-          formData: app.globalData.request.baseData,
-          success(res) {
-            wx.hideLoading();
-            res.data = JSON.parse(res.data);
-            if (res.data.code == 200) {
-              let url = app.globalData.request.cdnUrl + "/uploads/" + res.data.data.attach_path;
-              app.request({
-                url: "message/send",
-                data: {
-                  where: 'channel',
-                  to: that.data.room_id,
-                  type: 'img',
-                  msg: url,
-                  resource: url,
-                },
-                success(res) {
-                  that.hideAllDialog();
-                }
-              });
-            } else {
-              wx.showModal({
-                title: "上传失败(" + res.data.code + ")",
-                content: res.data.msg,
-                showCancel: false
-              });
-            }
-          },
-        })
-      },
-    });
-  },
-  onResize(res) {
-    let that = this;
-    if (res.deviceOrientation == 'landscape') {
-      that.setData({
-        isCarMode: true
-      });
-      wx.setKeepScreenOn({
-        keepScreenOn: true,
-      });
-    } else {
-      that.setData({
-        isCarMode: false
-      });
-      wx.setKeepScreenOn({
-        keepScreenOn: false,
-      });
-    }
+      isPanelShow: false,
+      isEmojiBoxShow: !this.data.isEmojiBoxShow,
+    })
+    wx.vibrateShort();
+    this.setData({
+      messageFocus: !this.data.isEmojiBoxShow,
+      messagePlaceHolder: this.data.isEmojiBoxShow ? config.placeholderSearchImage : config.placeholderDefault,
+      messageSendButton: this.data.isEmojiBoxShow ? config.messageButtonTitleSearch : config.messageButtonTitleSend,
+      atMessageObj: false
+    })
   },
   mainMenuClicked(e) {
-    let that = this;
     switch (e.mark.title) {
       case '驾驶':
-        that.setData({
-          isCarMode: !that.data.isCarMode
-        });
-        break;
+        this.setData({
+          isCarMode: !this.data.isCarMode
+        })
+        break
       case '点歌':
         wx.navigateTo({
           url: '../song/select?bbbug=' + app.globalData.systemVersion,
-        });
-        break;
+        })
+        break
       case '已点':
         wx.navigateTo({
           url: '../song/playing?bbbug=' + app.globalData.systemVersion,
-        });
-        break;
+        })
+        break
       case '歌单':
         wx.navigateTo({
           url: '../song/my?bbbug=' + app.globalData.systemVersion,
-        });
-        break;
+        })
+        break
       case '在线':
         wx.navigateTo({
           url: '../user/online?bbbug=' + app.globalData.systemVersion,
           events: {
-            doAtUser: function (userInfo) {
-              that.longTapToAtUser(userInfo)
+            doAtUser: (userInfo) => {
+              this.longTapToAtUser(userInfo)
             },
-            doTouchUser: function (user_id) {
-              that.doTouchUser(user_id);
-            },
+            doTouchUser: (user_id) => {
+              this.doTouchUser(user_id)
+            }
           }
-        });
-        break;
+        })
+        break
       case '换房':
         wx.navigateTo({
           url: '../room/select?bbbug=' + app.globalData.systemVersion,
           events: {
-            changeRoomSuccess: function (room_id) {
-              that.setData({
+            changeRoomSuccess: (room_id) => {
+              this.setData({
                 room_id: room_id
-              });
-              that.setData({
+              })
+              this.setData({
                 songInfo: false
-              });
-              that.data.bgPlayer.stop();
-              that.getRoomInfo();
+              })
+              this.data.bgPlayer.stop()
+              this.getRoomInfo()
             }
           }
-        });
-        break;
+        })
+        break
       case '注销':
-        app.globalData.userInfo = app.globalData.guestUserInfo;
-        app.globalData.request.baseData.access_token = app.globalData.guestUserInfo.access_token;
-        wx.setStorageSync('access_token', app.globalData.guestUserInfo.access_token);
-        that.setData({
+        app.globalData.userInfo = app.globalData.guestUserInfo
+        reqConfig.baseData.access_token = app.globalData.guestUserInfo.access_token
+        wx.setStorageSync('access_token', app.globalData.guestUserInfo.access_token)
+        this.setData({
           userInfo: app.globalData.userInfo
-        });
-        that.getMyInfo();
-        break;
+        })
+        this.getMyInfo();
+        break
       case '资料':
         wx.navigateTo({
           url: '../user/motify',
           events: {
-            myInfoChanged: function () {
-              that.getMyInfo(false);
+            myInfoChanged: () => {
+              this.getMyInfo(false)
             }
           }
-        });
-        break;
+        })
+        break
       case '管理':
         wx.navigateTo({
           url: '../room/motify?bbbug=' + app.globalData.systemVersion,
           events: {
-            reloadMessage: function () {
-              that.getMessageList();
-            },
+            reloadMessage: () => {
+              this.getMessageList()
+            }
           }
-        });
-        break;
+        })
+        break
       case '分享':
-        let imgUrl = 'https://api.bbbug.com/api/weapp/qrcode?room_id=' + that.data.room_id;
+        let imgUrl = 'https://api.bbbug.com/api/weapp/qrcode?room_id=' + this.data.room_id
         wx.previewImage({
           urls: [imgUrl],
           current: imgUrl
-        });
-        break;
+        })
+        break
       default:
+        return
     }
   },
   showMainMenu() {
-    let that = this;
-    wx.vibrateShort();
-    that.setData({
-      isPanelShow: !that.data.isPanelShow,
-      isEmojiBoxShow: false,
-    });
+    wx.vibrateShort()
+    this.setData({
+      isPanelShow: !this.data.isPanelShow,
+      isEmojiBoxShow: false
+    })
   },
+  // 点击圆形播放器
+  showSongMenu() {
+    let menu = ['收藏到歌单', '切歌']
+    if (this.data.isMusicPlaying) {
+      menu.push('关闭音乐')
+    } else {
+      menu.push('打开音乐')
+    }
+    wx.showActionSheet({
+      itemList: menu,
+      success: (res) => {
+        switch (menu[res.tapIndex]) {
+          case '关闭音乐':
+          case '打开音乐':
+            if (this.data.isMusicPlaying) {
+              this.data.bgPlayer.stop()
+              this.setData({
+                isMusicPlaying: false
+              })
+            } else {
+              this.setData({
+                isMusicPlaying: true
+              })
+              this.playMusic(this.data.songInfo)
+            }
+            break
+          case '收藏到歌单':
+            app.request({
+              url: api.addMySong,
+              data: {
+                room_id: app.globalData.roomInfo.room_id,
+                mid: this.data.songInfo.song.mid
+              },
+              loading: '收藏中',
+              success: (res) => {
+                wx.showToast({
+                  title: '收藏成功'
+                })
+              }
+            })
+            break
+          case '切歌':
+            let type = 'pass'
+            if (this.data.roomInfo.room_user == this.data.userInfo.user_id || this.data.userInfo.user_admin || this.data.songInfo.user.user_id == this.data.userInfo.user_id) {
+              type = 'pass'
+            } else {
+              type = 'vote'
+            }
+            app.request({
+              url: 'song/pass',
+              data: {
+                room_id: app.globalData.roomInfo.room_id,
+                mid: this.data.songInfo.song.mid,
+              },
+              loading: type == 'pass' ? '切歌中' : '投票中',
+              success: (res) => {
+                if (type == 'pass') {
+                  wx.showToast({
+                    title: '切歌成功'
+                  })
+                } else {
+                  wx.showModal({
+                    title: '投票成功',
+                    content: res.msg,
+                    showCancel: false,
+                  })
+                }
+              }
+            })
+            break
+          default:
+        }
+      }
+    })
+  },
+  getStaticUrl(str) {
+    if (str.indexOf('https://') == 0 || str.indexOf('http://') == 0) {
+      return str.replace('http://', 'https://')
+    } else {
+      return reqConfig.cdnUrl + '/uploads/' + str
+    }
+  },
+  sendEmoji(e) {
+    let url = false
+    if (e.mark.url.indexOf('/res/Emojis/') > -1) {
+      url = reqConfig.cdnUrl + '/images/emoji/' + e.mark.url.replace('/res/Emojis/', '')
+    } else {
+      url = e.mark.url
+    }
+    url = this.getStaticUrl(url)
+    console.log(url, '----')
+    app.request({
+      url: 'message/send',
+      data: {
+        where: 'channel',
+        to: this.data.room_id,
+        type: 'img',
+        msg: url,
+        resource: url,
+      },
+      success: (res) => {
+        this.hideAllDialog()
+      }
+    })
+  },
+  searchImages(message) {
+    app.request({
+      url: 'attach/search',
+      data: {
+        keyword: message
+      },
+      loading: '搜索中',
+      success: (res) => {
+        this.setData({
+          imageList: res.data,
+          isSystemEmoji: false
+        })
+      },
+      error: () => {
+        this.setData({
+          imageList: this.data.emojiList
+        })
+      }
+    })
+  },
+  sendMessage(e) {
+    let message = e.detail.value
+    if (!message) {
+      return
+    }
+    if (this.data.isEmojiBoxShow) {
+      this.searchImages(message)
+      return
+    }
+    this.setData({
+      message: ''
+    })
+    let message_send = message
+    if (this.data.atMessageObj) {
+      message = '@' + decodeURIComponent(this.data.atMessageObj.user_name + ' ' + message,
+        '')
+    }
+    let msgObj = {
+      type: 'text',
+      content: encodeURIComponent(message),
+      where: 'channel',
+      at: this.data.atMessageObj,
+      message_id: 0,
+      message_time: 0,
+      loading: true,
+      resource: message,
+      user: this.data.userInfo
+    }
+    this.addMessageToList(msgObj)
+    let atUserInfo = this.data.atMessageObj
+    this.setData({
+      atMessageObj: false
+    })
+    app.request({
+      url: 'message/send',
+      data: {
+        type: 'text',
+        where: "channel",
+        to: this.data.room_id,
+        msg: encodeURIComponent(message_send),
+        at: atUserInfo
+      },
+      success: (res) => {
+        this.setData({
+          atMessageObj: false,
+          isScrollEnabled: true,
+        })
+        this.autoScroll()
+      },
+      error: (res) => {
+        this.setData({
+          message: message
+        })
+      }
+    })
+  },
+  chooseImage() {
+    wx.chooseImage({
+      count: 1,
+      sizeType: 'compressed',
+      success: (res) => {
+        this.hideAllDialog()
+        wx.showLoading({
+          title: '发送中',
+        })
+        wx.uploadFile({
+          url: reqConfig.apiUrl + 'attach/uploadImage',
+          filePath: res.tempFilePaths[0],
+          name: 'file',
+          formData: reqConfig.baseData,
+          success: (res) => {
+            wx.hideLoading()
+            res.data = JSON.parse(res.data)
+            if (res.data.code == 200) {
+              let url = reqConfig.cdnUrl + '/uploads/' + res.data.data.attach_path
+              app.request({
+                url: 'message/send',
+                data: {
+                  where: 'channel',
+                  to: this.data.room_id,
+                  type: 'img',
+                  msg: url,
+                  resource: url,
+                },
+                success: (res) => {
+                  this.hideAllDialog()
+                }
+              })
+            } else {
+              wx.showModal({
+                title: '上传失败(' + res.data.code + ')',
+                content: res.data.msg,
+                showCancel: false
+              })
+            }
+          }
+        })
+      }
+    })
+  },
+  login() {
+    wx.navigateTo({
+      url: '../user/login?bbbug=' + app.globalData.systemVersion
+    })
+  }
 })

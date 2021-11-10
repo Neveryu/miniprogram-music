@@ -1,0 +1,6 @@
+{
+  "component": true,
+  "usingComponents": {},
+  "navigationBarTitleText": "在线用户",
+  "enablePullDownRefresh": true
+}

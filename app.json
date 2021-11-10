@@ -2,12 +2,15 @@
   "darkmode": true,
   "themeLocation": "theme.json",
   "pages": [
-    "pages/index/index"
+    "pages/index/index",
+    "pages/user/login"
   ],
   "entryPagePath": "pages/index/index",
-  "requiredBackgroundModes": ["audio"],
+  "requiredBackgroundModes": [
+    "audio"
+  ],
   "window": {
-    "navigationBarTitleText": "BBBUG",
+    "navigationBarTitleText": "音为有你",
     "navigationBarTextStyle": "@navigationBarTextStyle",
     "backgroundColor": "@backgroundColor",
     "backgroundTextStyle": "@backgroundTextStyle",
@@ -17,7 +20,6 @@
     "navigationStyle": "default"
   },
   "sitemapLocation": "sitemap.json",
-  "plugins": {
-  },
+  "plugins": {},
   "resizable": true
 }

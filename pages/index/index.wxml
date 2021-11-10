@@ -5,9 +5,8 @@
     scroll-into-view="{{bbbug_view_scroll}}"
     scroll-y="true"
     bindtap="hideAllDialog"
-    bindscroll="messageListScrolling"
+    bindscroll=""
   >
-    <!-- 消息 -->
     <block wx:for="{{messageList}}" wx:key="id">
       <block wx:if="{{item.type!='system' && item.type!='play'}}">
         <view class="bbbug_item {{item.user.user_id==userInfo.user_id?'bbbug_mine':''}}">
@@ -70,41 +69,16 @@
           </view>
         </view>
       </block>
-      <!-- 系统消息 -->
       <view class="bbbug_system" wx:if="{{item.type=='system'}}">
         <view>{{helper.urldecode(item.content)}}</view>
       </view>
     </block>
     <view class="bbbug_view_id" id="{{bbbug_view_id}}" style="height:{{bottomHeight}}px;"></view>
   </scroll-view>
-  <view class="bbbug_player" bindtap="showSongMenu" bindlongpress="setSimplePlayer" wx:if="{{!simplePlayer}}">
-    <view wx:if="{{songInfo}}">
-      <image class="bbbug_player_img" src="{{helper.getStaticUrl(songInfo.song.pic)}}" mode="widthFix"></image>
-      <image class="bbbug_player_outer" src="/res/image/player_bg.png" mode="widthFix"></image>
-      <image class="bbbug_player_bar" src="/res/image/player_bar.png" mode="widthFix"></image>
-      <view class="bbbug_player_song">{{songInfo.song.name}} - {{songInfo.song.singer}}</view>
-      <view class="bbbug_player_singer">{{lrcString}}</view>
-      <view class="bbbug_player_user">点歌人 {{helper.urldecode(songInfo.user.user_name)}}</view>
-    </view>
-    <view wx:if="{{!songInfo}}">
-      <view class="bbbug_player_tips">播放器加载中</view>
-    </view>
-  </view>
-  <view class="bbbug_input" bindtap="footerTapedToFocus" wx:if="{{!isCarMode}}">
-    <view class="bbbug_face" catchtap="showOrHideEmojiBox">
-      <image src="/res/image/add.png" />
-    </view>
-    <!-- <view class="placeholder" wx:if="{{!message}}">{{messagePlaceHolder}}</view> -->
-    <!-- <input type="text" confirm-type="{{messageSendButton}}" confirm-hold="{{messageConfirmHold}}"
-      bindconfirm="sendMessage" focus="{{messageFocus}}" value="{{message}}" bindinput="messageChanged"
-      bindblur="messageBlured" cursor-spacing="15" /> -->
-    <input type="text" confirm-type="{{messageSendButton}}" confirm-hold="{{messageConfirmHold}}"
-      bindconfirm="sendMessage" focus="{{messageFocus}}" placeholder="{{messagePlaceHolder}}" value="{{message}}"
-      cursor-spacing="15" catchtap="" bindfocus="messageFocused" />
-    <view class="bbbug_more" catchtap="showMainMenu">
-      <image src="/res/image/more.png" />
-    </view>
-  </view>
+  
+  <!-- 底部菜单栏 -->
+  <include src='./template/footer-toolbar.wxml'/>
+
   <view class="bbbug_at" wx:if="{{atMessageObj}}">
     <view class="bbbug_at_user" bindtap="clearAtInfo" wx:if="{{!atMessageObj.message}}">
       @{{helper.urldecode(atMessageObj.user_name)}} <i class="iconfont icon-close"></i></view>
@@ -118,51 +92,25 @@
   </view>
   <view class="bbbug_scroll_button" wx:if="{{!isScrollEnabled && !isEmojiBoxShow && !isPanelShow}}"
     bindtap="enableScroll">新消息</view>
-  <view class="bbbug_emoji {{isEmojiBoxShow?'animationSlideIn':'animationSlideOut'}}">
-    <image wx:for="{{imageList}}" wx:key="id" src="{{item}}" mode="widthFix" bindtap="sendEmoji" bindlongpress="previewImage"
-      mark:url="{{item}}" style="height:{{isSystemEmoji?'auto':'80px'}}"></image>
-    <view wx:if="{{imageList.length>0}}" class="bbbug_upload" bindtap="chooseImage">发送图片</view>
-    <view wx:if="{{imageList.length==0}}">请输入表情关键词搜索</view>
+  
+  <view class="bbbug_cover" wx:if="{{!userInfo || userInfo.user_id<0}}" bindtap="login">点击登录后加入互动吧</view>
+
+  <!-- 播放器(顶部固定长条) -->
+  <view class="bbbug_player" bindtap="showSongMenu" bindlongpress="setSimplePlayer" wx:if="{{!simplePlayer}}">
+    <view wx:if="{{songInfo}}">
+      <image class="bbbug_player_img" src="{{helper.getStaticUrl(songInfo.song.pic)}}" mode="widthFix"></image>
+      <image class="bbbug_player_outer" src="/res/image/player_bg.png" mode="widthFix"></image>
+      <image class="bbbug_player_bar" src="/res/image/player_bar.png" mode="widthFix"></image>
+      <view class="bbbug_player_song">{{songInfo.song.name}} - {{songInfo.song.singer}}</view>
+      <view class="bbbug_player_singer">{{lrcString}}</view>
+      <view class="bbbug_player_user">点歌人 {{helper.urldecode(songInfo.user.user_name)}}</view>
+    </view>
+    <view wx:if="{{!songInfo}}">
+      <view class="bbbug_player_tips">播放器加载中</view>
+    </view>
   </view>
-  <!-- <view class="bbbug_cover" wx:if="{{!userInfo || userInfo.user_id<0}}" bindtap="login">点击登录后加入互动吧</view> -->
-  <view class="bbbug_panel {{isPanelShow?'animationSlideIn':'animationSlideOut'}}">
-    <view class="bbbug_panel_item" bindtap="mainMenuClicked" mark:title="点歌">
-      <view class="bbbug_panel_icon"><i class="iconfont icon-icon_invite"></i></view>
-      <view class="bbbug_panel_title">点歌</view>
-    </view>
-    <view class="bbbug_panel_item" bindtap="mainMenuClicked" mark:title="已点">
-      <view class="bbbug_panel_icon"><i class="iconfont icon-icon_dispose"></i></view>
-      <view class="bbbug_panel_title">已点</view>
-    </view>
-    <view class="bbbug_panel_item" bindtap="mainMenuClicked" mark:title="歌单">
-      <view class="bbbug_panel_icon"><i class="iconfont icon-icon_doc"></i></view>
-      <view class="bbbug_panel_title">歌单</view>
-    </view>
-    <view class="bbbug_panel_item" bindtap="mainMenuClicked" mark:title="在线">
-      <view class="bbbug_panel_icon"><i class="iconfont icon-icon_group"></i></view>
-      <view class="bbbug_panel_title">在线</view>
-    </view>
-    <view class="bbbug_panel_item" bindtap="mainMenuClicked" mark:title="换房">
-      <view class="bbbug_panel_icon"><i class="iconfont icon-icon_homepage"></i></view>
-      <view class="bbbug_panel_title">换房</view>
-    </view>
-    <view class="bbbug_panel_item" bindtap="mainMenuClicked" mark:title="资料">
-      <view class="bbbug_panel_icon"><i class="iconfont icon-icon_compile"></i></view>
-      <view class="bbbug_panel_title">资料</view>
-    </view>
-    <view class="bbbug_panel_item" bindtap="mainMenuClicked" mark:title="管理">
-      <view class="bbbug_panel_icon"><i class="iconfont icon-icon_boss"></i></view>
-      <view class="bbbug_panel_title">管理</view>
-    </view>
-    <view class="bbbug_panel_item" bindtap="mainMenuClicked" mark:title="分享">
-      <view class="bbbug_panel_icon"><i class="iconfont icon-qrcode"></i></view>
-      <view class="bbbug_panel_title">分享</view>
-    </view>
-    <!-- <view class="bbbug_panel_item" bindtap="mainMenuClicked" mark:title="驾驶">
-      <view class="bbbug_panel_icon"><i class="iconfont icon-changyongtubiao-xianxingdaochu-zhuanqu-112"></i></view>
-      <view class="bbbug_panel_title">驾驶</view>
-    </view> -->
-  </view>
+  
+  <!-- 播放器(圆形) -->
   <movable-area>
     <movable-view inertia="true" direction="all" bindtap="showSongMenu" bindlongpress="setSimplePlayer"
       wx:if="{{simplePlayer}}">
@@ -174,6 +122,7 @@
       </view>
     </movable-view>
   </movable-area>
+  
   <view class="car-mode" wx:if="{{isCarMode}}" bindlongpress="longPressPassTheSong" bindtap="tapToAddSong">
     <view class="car-mode-player" wx:if="{{songInfo}}">
       <view class="car-mode-img">
@@ -193,6 +142,7 @@
     </view>
   </view>
 </view>
+
 <view wx:if="{{showPasswordForm}}" class="passwordForm">
   <view class="tips">该房间需要输入密码</view>
   <form bindsubmit="doPasswordSubmit">
