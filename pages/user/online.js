@@ -66,7 +66,7 @@ Component({
       } else {
         menu.push('设为嘉宾')
       }
-      let eventChannel = this.getOpenerEventChannel()
+      // let eventChannel = this.getOpenerEventChannel()
       wx.showActionSheet({
         itemList: menu,
         success: (res) => {
@@ -122,7 +122,7 @@ Component({
             case '设为嘉宾':
             case '取消嘉宾':
               app.request({
-                url: "user/guestctrl",
+                url: 'user/guestctrl',
                 data: {
                   room_id: app.globalData.roomInfo.room_id,
                   user_id: user.user_id
@@ -130,14 +130,14 @@ Component({
                 success: (res) => {
                   wx.showToast({
                     title: res.msg
-                  });
+                  })
                   that.getList()
                 }
               })
               break
             default:
               wx.showToast({
-                title: '即将上线',
+                title: '即将上线'
               })
           }
         }

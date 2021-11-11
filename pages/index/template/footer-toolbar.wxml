@@ -45,14 +45,14 @@
     <view class="bbbug_panel_icon"><i class="iconfont icon-icon_boss"></i></view>
     <view class="bbbug_panel_title">管理</view>
   </view>
-  <view class="bbbug_panel_item" bindtap="mainMenuClicked" mark:title="分享">
+  <!-- <view class="bbbug_panel_item" bindtap="mainMenuClicked" mark:title="分享">
     <view class="bbbug_panel_icon"><i class="iconfont icon-qrcode"></i></view>
     <view class="bbbug_panel_title">分享</view>
-  </view>
-  <!-- <view class="bbbug_panel_item" bindtap="mainMenuClicked" mark:title="驾驶">
+  </view> -->
+  <view class="bbbug_panel_item" bindtap="mainMenuClicked" mark:title="驾驶">
     <view class="bbbug_panel_icon"><i class="iconfont icon-changyongtubiao-xianxingdaochu-zhuanqu-112"></i></view>
     <view class="bbbug_panel_title">驾驶</view>
-  </view> -->
+  </view>
 </view>
 
 <!-- 点击右下脚加号的弹出框 -->

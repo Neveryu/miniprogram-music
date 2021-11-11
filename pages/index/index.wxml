@@ -5,7 +5,7 @@
     scroll-into-view="{{bbbug_view_scroll}}"
     scroll-y="true"
     bindtap="hideAllDialog"
-    bindscroll=""
+    bindscroll="messageListScrolling"
   >
     <block wx:for="{{messageList}}" wx:key="id">
       <block wx:if="{{item.type!='system' && item.type!='play'}}">
@@ -122,25 +122,9 @@
       </view>
     </movable-view>
   </movable-area>
-  
-  <view class="car-mode" wx:if="{{isCarMode}}" bindlongpress="longPressPassTheSong" bindtap="tapToAddSong">
-    <view class="car-mode-player" wx:if="{{songInfo}}">
-      <view class="car-mode-img">
-        <image src="{{songInfo.song.pic}}" />
-      </view>
-      <view class="car-mode-song">
-        <view class="car-mode-name">{{songInfo.song.name}} - {{songInfo.song.singer}}</view>
-        <view class="car-mode-singer">点歌人: (ID:{{songInfo.user.user_id}}){{helper.urldecode(songInfo.user.user_name)}}
-        </view>
-        <view class="car-mode-lrc">
-          {{lrcString}}
-        </view>
-      </view>
-    </view>
-    <view class="car-mode-tips">
-      点击本页收藏歌曲，长按切歌，我们会为你朗读消息，但为了你的驾驶安全，暂不支持发送消息。
-    </view>
-  </view>
+
+  <!-- 驾驶模式 -->
+  <include src='./template/car-model.wxml'/>
 </view>
 
 <view wx:if="{{showPasswordForm}}" class="passwordForm">

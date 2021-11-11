@@ -48,6 +48,18 @@ Page({
     roomInfo: null,
     songInfo: null
   },
+  messageListScrolling(e) {
+    let res = wx.getSystemInfoSync()
+    if (res.windowHeight + 50 < e.detail.scrollHeight - e.detail.scrollTop) {
+      this.setData({
+        isScrollEnabled: false
+      })
+    } else {
+      this.setData({
+        isScrollEnabled: true
+      })
+    }
+  },
   onLoad(options) {
     // 初始化emoji列表
     this.data.emojiList = config.emojiList
@@ -499,8 +511,13 @@ Page({
       return
     }
     let view_id = 'view_id_' + parseInt(Math.random() * 10000000)
+    // this.setData({
+    //   bbbug_view_scroll: ''
+    // })
     this.setData({
-      bbbug_view_id: view_id,
+      bbbug_view_id: view_id
+    })
+    this.setData({
       bbbug_view_scroll: view_id
     })
   },
@@ -654,7 +671,7 @@ Page({
         this.setData({
           userInfo: app.globalData.userInfo
         })
-        this.getMyInfo();
+        this.getMyInfo()
         break
       case '资料':
         wx.navigateTo({
@@ -768,6 +785,34 @@ Page({
         }
       }
     })
+  },
+  doTouchUser(user_id) {
+    app.request({
+      url: 'message/touch',
+      data: {
+        at: user_id,
+        room_id: this.data.room_id
+      },
+      success: () => {
+        wx.vibrateLong()
+      }
+    })
+  },
+  longTapToAtUser(user) {
+    this.setData({
+      isPanelShow: false,
+      atMessageObj: {
+        user_id: user.user_id,
+        user_name: decodeURIComponent(user.user_name)
+      }
+    })
+    if (!this.data.messageFocus) {
+      this.setData({
+        messageFocus: true
+      })
+    }
+    this.autoScroll()
+    wx.vibrateShort()
   },
   getStaticUrl(str) {
     if (str.indexOf('https://') == 0 || str.indexOf('http://') == 0) {

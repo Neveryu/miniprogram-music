@@ -1,5 +1,5 @@
 # miniprogram-music
-<h1 align="center">微信小程序小程序——音乐播放器</h1>
+<h1 align="center">微信小程序——音乐播放器</h1>
 <p align="center">
 <a href="https://github.com/HammCn/BBBUG-Wechat-App" target="_blank">Github</a> | 
 <a href="https://gitee.com/bbbug_com/bbbug-wechat-app" target="_blank">Gitee</a>
