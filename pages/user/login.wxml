@@ -19,7 +19,7 @@
             <view class="weui-label">密码</view>
           </view>
           <view class="weui-cell__bd">
-            <input class="weui-input" placeholder="你的密码或验证码" password="true" value="" name="user_password" />
+            <input class="weui-input" placeholder="你的密码或验证码" password="true" value="" name="user_password" bindconfirm="formSubmit"/>
           </view>
         </view>
       </view>

@@ -2,8 +2,8 @@ import config from '../../config/index.js'
 import api from '../../config/api.js'
 import { config as reqConfig } from '../../utils/request.js'
 const app = getApp()
-// var WechatSI = requirePlugin("WechatSI")
-// let WechatRecord = WechatSI.getRecordRecognitionManager()
+var WechatSI = requirePlugin('WechatSI')
+let WechatRecord = WechatSI.getRecordRecognitionManager()
 Page({
   data: {
     // 值应为某子元素id（id不能以数字开头）。设置哪个方向可滚动，则在哪个方向滚动到该元素
@@ -522,19 +522,17 @@ Page({
     })
   },
   say(str) {
-    return
-    let that = this;
-    if (!that.data.isCarMode) {
-      return;
+    if (!this.data.isCarMode) {
+      return
     }
     WechatSI.textToSpeech({
-      lang: "zh_CN",
+      lang: 'zh_CN',
       tts: true,
       content: str,
-      success: function (res) {
-        that.data.audioPlayer.src = res.filename;
-        that.data.audioPlayer.playbackRate = 1.2;
-        that.data.audioPlayer.play();
+      success: (res) => {
+        this.data.audioPlayer.src = res.filename
+        this.data.audioPlayer.playbackRate = 1.2
+        this.data.audioPlayer.play()
       }
     })
   },
@@ -704,6 +702,117 @@ Page({
         return
     }
   },
+  // 点击图片，预览。【这个功能我觉得不好，暂时不放开】
+  previewImage(e) {
+    return
+    try {
+      e.mark.url = decodeURIComponent(e.mark.url)
+    } catch (e) {
+      // not todo
+    }
+    if (e.mark.url) {
+      if (e.mark.url.indexOf('images/emoji/') == -1 && e.mark.url.indexOf('/res/Emojis/') == -1) {
+        wx.previewImage({
+          current: this.getStaticUrl(e.mark.url),
+          urls: [
+            this.getStaticUrl(e.mark.url)
+          ]
+        })
+      }
+    }
+  },
+  longTapToMessage(e) {
+    if (!this.data.userInfo || this.data.userInfo.user_id < 0) {
+      return
+    }
+    let msg = e.mark.msg
+    let menuList = ['引用消息']
+    if (msg.user.user_id == this.data.userInfo.user_id || this.data.userInfo.user_admin || this.data.userInfo.user_id == this.data.roomInfo.room_user) {
+      //我发的消息 我是管理员 我是房主 给撤回按钮
+      menuList.push('撤回消息')
+    }
+    switch (msg.type) {
+      case 'img':
+        // menuList.push('保存大图');
+        break
+      case 'text':
+        menuList.push('复制文字')
+        break
+      case 'jump':
+        menuList.push('进入房间')
+        break
+      case 'link':
+        menuList.push('复制链接')
+        break
+      default:
+        break
+    }
+    wx.vibrateShort()
+    wx.showActionSheet({
+      itemList: menuList,
+      success: (res) => {
+        switch (menuList[res.tapIndex]) {
+          case '复制文字':
+            let copyData = decodeURIComponent(msg.content)
+            if (msg.at) {
+              copyData = '@' + decodeURIComponent(msg.at.user_name) + ' ' + copyData
+            }
+            // 调用成功后，会弹出 toast 提示"内容已复制"，持续 1.5s
+            wx.setClipboardData({
+              data: copyData,
+            })
+            // wx.showToast({
+            //   title: '复制成功',
+            // });
+            break
+          case '引用消息':
+            this.setData({
+              messageFocus: true,
+              atMessageObj: {
+                user_id: msg.user.user_id,
+                user_name: decodeURIComponent(msg.user.user_name),
+                message: msg
+              }
+            })
+            if (!this.data.messageFocus) {
+              this.setData({
+                messageFocus: true
+              })
+            }
+            break
+          case '复制链接':
+            wx.setClipboardData({
+              data: decodeURIComponent(msg.link)
+            })
+            break
+          case '撤回消息':
+            app.request({
+              url: 'message/back',
+              loading: '撤回中',
+              data: {
+                message_id: msg.message_id,
+                room_id: this.data.room_id
+              },
+              success: (res) => {
+                // not todo
+              }
+            })
+            break
+          case '进入房间':
+            this.setData({
+              room_id: msg.jump.room_id
+            })
+            this.getRoomInfo()
+            break
+          default:
+            wx.showToast({
+              title: '功能即将上线'
+            })
+            break
+        }
+      }
+    })
+  },
   showMainMenu() {
     wx.vibrateShort()
     this.setData({
@@ -864,6 +973,30 @@ Page({
       }
     })
   },
+  enableScroll() {
+    this.setData({
+      isScrollEnabled: true
+    })
+    this.autoScroll()
+  },
+  longPressPassTheSong() {
+    app.request({
+      url: 'song/pass',
+      data: {
+        room_id: app.globalData.roomInfo.room_id,
+        mid: this.data.songInfo.song.mid
+      },
+      success: (res) => {
+        if (res.msg != '切歌成功') {
+          res.msg = '已发起切歌投票'
+        }
+        this.say(res.msg)
+      },
+      error: () => {
+        return true
+      }
+    })
+  },
   sendMessage(e) {
     let message = e.detail.value
     if (!message) {
@@ -901,7 +1034,7 @@ Page({
       url: 'message/send',
       data: {
         type: 'text',
-        where: "channel",
+        where: 'channel',
         to: this.data.room_id,
         msg: encodeURIComponent(message_send),
         at: atUserInfo
@@ -962,6 +1095,11 @@ Page({
           }
         })
       }
+    })
+  },
+  backCar() {
+    this.setData({
+      isCarMode: false
     })
   },
   login() {

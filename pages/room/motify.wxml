@@ -1,0 +1,123 @@
+<view class="page" xmlns:wx="http://www.w3.org/1999/xhtml">
+  <view class="page__bd" wx:if="{{bbbug}}">
+    <form bindsubmit="doSubmit" bindreset="formReset" wx:if="{{roomInfo}}">
+      <view class="weui-cells weui-cells_after-title">
+        <view class="weui-cell weui-cell_input">
+          <view class="weui-cell__hd">
+            <view class="weui-label">房间名称</view>
+          </view>
+          <view class="weui-cell__bd">
+            <input class="weui-input" placeholder="房间名称" type="text" name="room_name" value="{{roomInfo.room_name}}" />
+          </view>
+        </view>
+        <view class="weui-cell weui-cell_input">
+          <view class="weui-cell__hd">
+            <view class="weui-label">房间类型</view>
+          </view>
+          <view class="weui-cell__bd">
+            <input class="weui-input" placeholder="请选择房间类型" type="text" value="{{room_type[room_type_index].name}}"
+              disabled="disabled" readonly="readonly" bindtap="changeType" />
+          </view>
+        </view>
+        <view class="weui-cell weui-cell_input" wx:if="{{room_type_index==2}}">
+          <view class="weui-cell__hd">
+            <view class="weui-label">循环模式</view>
+          </view>
+          <view class="weui-cell__bd">
+            <input class="weui-input" placeholder="请选择循环播放模式" type="text" value="{{room_playone[room_playone_index].title}}"
+              disabled="disabled" readonly="readonly" bindtap="changePlayone" />
+          </view>
+        </view>
+        <view class="weui-cell weui-cell_input">
+          <view class="weui-cell__hd">
+            <view class="weui-label">房间公告</view>
+          </view>
+          <view class="weui-cell__bd">
+            <input class="weui-input" placeholder="房间公告" type="text" name="room_notice"
+              value="{{roomInfo.room_notice}}" />
+          </view>
+        </view>
+        <view class="weui-cell weui-cell_input">
+          <view class="weui-cell__hd">
+            <view class="weui-label">点歌间隔</view>
+          </view>
+          <view class="weui-cell__bd">
+            <input class="weui-input" placeholder="点歌间隔" type="number" name="room_addsongcd"
+              value="{{roomInfo.room_addsongcd}}" />
+          </view>
+        </view>
+        <view class="weui-cell weui-cell_input">
+          <view class="weui-cell__hd">
+            <view class="weui-label">顶歌间隔</view>
+          </view>
+          <view class="weui-cell__bd">
+            <input class="weui-input" placeholder="顶歌间隔" type="number" name="room_pushsongcd"
+              value="{{roomInfo.room_pushsongcd}}" />
+          </view>
+        </view>
+        <view class="weui-cell weui-cell_input">
+          <view class="weui-cell__hd">
+            <view class="weui-label">日顶次数</view>
+          </view>
+          <view class="weui-cell__bd">
+            <input class="weui-input" placeholder="日顶次数" type="number" name="room_pushdaycount"
+              value="{{roomInfo.room_pushdaycount}}" />
+          </view>
+        </view>
+        <view class="weui-cell weui-cell_input">
+          <view class="weui-cell__hd">
+            <view class="weui-label">点歌数量</view>
+          </view>
+          <view class="weui-cell__bd">
+            <input class="weui-input" placeholder="点歌数量" type="number" name="room_addcount"
+              value="{{roomInfo.room_addcount}}" />
+          </view>
+        </view>
+        <view class="weui-cell weui-cell_input">
+          <view class="weui-cell__hd">
+            <view class="weui-label">点歌权限</view>
+          </view>
+          <view class="weui-cell__bd">
+            <input class="weui-input" placeholder="请选择点歌权限" type="text"
+              value="{{room_addsong[room_addsong_index].title}}" disabled="disabled" readonly="readonly"
+              bindtap="changeAddSong" />
+          </view>
+        </view>
+        <view class="weui-cell weui-cell_input">
+          <view class="weui-cell__hd">
+            <view class="weui-label">禁言状态</view>
+          </view>
+          <view class="weui-cell__bd">
+            <input class="weui-input" placeholder="请选择禁言状态" type="text"
+              value="{{room_sendmsg[room_sendmsg_index].title}}" disabled="disabled" readonly="readonly"
+              bindtap="changeSendmsg" />
+          </view>
+        </view>
+        <view class="weui-cell weui-cell_input">
+          <view class="weui-cell__hd">
+            <view class="weui-label">房间权限</view>
+          </view>
+          <view class="weui-cell__bd">
+            <input class="weui-input" placeholder="请选择房间权限" type="text" value="{{room_public[room_public_index].title}}"
+              disabled="disabled" readonly="readonly" bindtap="changePublic" />
+          </view>
+        </view>
+        <view class="weui-cell weui-cell_input" wx:if="{{room_public_index}}">
+          <view class="weui-cell__hd">
+            <view class="weui-label">房间密码</view>
+          </view>
+          <view class="weui-cell__bd">
+            <input class="weui-input" placeholder="房间密码" type="number" name="room_password"
+              value="{{roomInfo.room_password}}" />
+          </view>
+        </view>
+      </view>
+      <view class="weui-btn-area">
+        <button form-type="submit" class="weui-btn" type="primary">修改信息</button>
+      </view>
+      <view>
+        <view class="deleteHistory" bindtap="deleteHistory"><i class="iconfont icon-poweroff"></i>删除房间聊天记录</view>
+      </view>
+    </form>
+  </view>
+</view>

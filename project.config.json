@@ -22,9 +22,9 @@
     "uploadWithSourceMap": true,
     "compileHotReLoad": true,
     "lazyloadPlaceholderEnable": false,
-    "useMultiFrameRuntime": false,
-    "useApiHook": false,
-    "useApiHostProcess": false,
+    "useMultiFrameRuntime": true,
+    "useApiHook": true,
+    "useApiHostProcess": true,
     "babelSetting": {
       "ignore": [],
       "disablePlugins": [],
@@ -41,7 +41,7 @@
   "compileType": "miniprogram",
   "libVersion": "2.19.2",
   "appid": "wx652ce078b8271b28",
-  "projectname": "音为有你",
+  "projectname": "音为爱你",
   "debugOptions": {
     "hidedInDevtools": []
   },

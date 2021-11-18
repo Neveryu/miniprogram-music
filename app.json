@@ -10,7 +10,7 @@
     "audio"
   ],
   "window": {
-    "navigationBarTitleText": "音为有你",
+    "navigationBarTitleText": "音为爱你",
     "navigationBarTextStyle": "@navigationBarTextStyle",
     "backgroundColor": "@backgroundColor",
     "backgroundTextStyle": "@backgroundTextStyle",
@@ -20,6 +20,11 @@
     "navigationStyle": "default"
   },
   "sitemapLocation": "sitemap.json",
-  "plugins": {},
+  "plugins": {
+    "WechatSI": {
+      "version": "0.3.4",
+      "provider": "wx069ba97219f66d99"
+    }
+  },
   "resizable": true
 }
