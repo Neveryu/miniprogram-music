@@ -3,14 +3,15 @@
   "themeLocation": "theme.json",
   "pages": [
     "pages/index/index",
-    "pages/user/login"
+    "pages/user/login",
+    "pages/song/car-mode"
   ],
   "entryPagePath": "pages/index/index",
   "requiredBackgroundModes": [
     "audio"
   ],
   "window": {
-    "navigationBarTitleText": "音为爱你",
+    "navigationBarTitleText": "Music For U",
     "navigationBarTextStyle": "@navigationBarTextStyle",
     "backgroundColor": "@backgroundColor",
     "backgroundTextStyle": "@backgroundTextStyle",

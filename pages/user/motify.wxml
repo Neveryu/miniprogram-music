@@ -58,8 +58,8 @@
         <button form-type="submit" class="weui-btn" type="primary">保存资料</button>
       </view>
       <view class="footer">
-        <view class="syncWechatUserInfo"><button bindgetuserinfo="syncWechatUserInfo" open-type="getUserInfo"><i
-              class="iconfont icon-wechat-fill"></i>同步资料</button></view>
+        <!-- <view class="syncWechatUserInfo"><button bindgetuserinfo="syncWechatUserInfo" open-type="getUserInfo"><i
+              class="iconfont icon-wechat-fill"></i>同步资料</button></view> -->
         <view class="logout" bindtap="logout"><i class="iconfont icon-poweroff"></i>退出登录</view>
       </view>
     </form>

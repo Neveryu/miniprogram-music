@@ -1,0 +1,21 @@
+<view class="car-mode" bindlongpress="longPressPassTheSong" style="background-image: url({{songInfo.song.pic}})">
+  <view class="car-mode-player" wx:if="{{songInfo}}" style="top: {{top}}">
+    <view class="car-mode-img">
+      <image src="{{songInfo.song.pic}}" bindtap="tapToAddSong" />
+    </view>
+    <view class="car-mode-song">
+      <view class="car-mode-name">{{songInfo.song.name}} - {{songInfo.song.singer}}</view>
+      <!-- <view class="car-mode-singer">点歌人: (ID:{{songInfo.user.user_id}}){{helper.urldecode(songInfo.user.user_name)}}
+      </view> -->
+      <view class="car-mode-lrc">
+        {{lrcString}}    
+      </view>
+    </view>
+  </view>
+  <view class="car-back">
+    <button type="warn" bindtap="backCar">退 出 / 返 回</button>
+  </view>
+  <view class="car-mode-tips">
+    点击歌曲图片收藏歌曲，长按切歌，我们会为你朗读消息，但为了你的驾驶安全，暂不支持发送消息。
+  </view>
+</view>

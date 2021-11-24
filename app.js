@@ -1,5 +1,4 @@
 const { request } = require('./utils/request.js')
-import api from './config/api.js'
 import { checkMiniprogramVersion } from './utils/core.js'
 App({
   globalData: {

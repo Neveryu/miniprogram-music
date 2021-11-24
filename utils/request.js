@@ -34,7 +34,7 @@ let config = {
  */
 const request = (data = {}, cb) => {
   if(cb && typeof(cb) == 'function') {
-
+    // not todo
   }
   if (data.type) {
     switch (data.type.toLowerCase()) {
@@ -101,6 +101,10 @@ const request = (data = {}, cb) => {
             }
             break
           case config.code.access_token_missing:
+            wx.showToast({
+              icon: 'none',
+              title: res.data.msg
+            })
             break
           case config.code.login:
             // 需要登录

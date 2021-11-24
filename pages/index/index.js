@@ -46,7 +46,8 @@ Page({
     audioPlayer: null,
     userInfo: null,
     roomInfo: null,
-    songInfo: null
+    songInfo: null,
+    carEventChannel: null
   },
   messageListScrolling(e) {
     let res = wx.getSystemInfoSync()
@@ -67,6 +68,16 @@ Page({
     app.watchAccessToken(() => {
       this.getMyInfo()
     })
+    // 响应歌词变化
+    Object.defineProperty(this.data, 'lrcString', {
+      enumerable: true,
+      set: (value) => {
+        if(value !== this.data._lrcString) {
+          this.data._lrcString = value
+          this.data.carEventChannel && this.data.carEventChannel.emit('sendLrcString', value)
+        }
+      }
+    })
     // 初始化一个背景音频管理器；小程序切入后台，如果音频处于播放状态，可以继续播放。但是后台状态不能通过调用API操纵音频的播放状态。
     this.data.bgPlayer = wx.getBackgroundAudioManager()
     if (options && options.scene) {
@@ -84,7 +95,6 @@ Page({
     })
     // 初始化房间号
     this.data.room_id = wx.getStorageSync('room_id') || this.data.default_room
-
     let plat = app.systemInfo.platform.toLowerCase()
     if (plat == 'windows' || plat == 'mac') {
       wx.redirectTo({
@@ -97,7 +107,7 @@ Page({
      * 监听背景音频播放进度更新事件，只有小程序在前台时会回调。
      * 这里用户歌词的轮动显示
      */
-    this.data.bgPlayer.onTimeUpdate( (e) => {
+    this.data.bgPlayer.onTimeUpdate((e) => {
       if (this.data.songInfo) {
         if (this.data.musicLrcObj) {
           for (let i = 0; i < this.data.musicLrcObj.length; i++) {
@@ -120,6 +130,7 @@ Page({
     })
     /**
      * 监听用户在系统音乐播放面板点击上一曲事件（仅iOS）
+     * 收藏？
      */
     this.data.bgPlayer.onPrev(() => {
       if (this.data.isCarMode) {
@@ -127,13 +138,13 @@ Page({
           url: 'song/addMySong',
           data: {
             room_id: app.globalData.roomInfo.room_id,
-            mid: this.data.songInfo.song.mid,
+            mid: this.data.songInfo.song.mid
           },
           loading: '收藏中',
           success: (res) => {
             this.say(res.msg)
           },
-          error(res) {
+          error: (res) => {
             this.say(res.msg)
             return true
           }
@@ -143,7 +154,7 @@ Page({
     /**
      * 监听用户在系统音乐播放面板点击下一曲事件（仅iOS）
      */
-    this.data.bgPlayer.onNext(function () {
+    this.data.bgPlayer.onNext(() => {
       if (!this.data.isCarMode) {
         return
       }
@@ -151,7 +162,7 @@ Page({
         url: 'song/pass',
         data: {
           room_id: app.globalData.roomInfo.room_id,
-          mid: this.data.songInfo.song.mid,
+          mid: this.data.songInfo.song.mid
         },
         success: (res) => {
           this.say(res.msg)
@@ -185,7 +196,7 @@ Page({
       success: (res) => {
         this.setData({
           userInfo: res.data
-        });
+        })
         app.globalData.userInfo = res.data
         app.globalData.access_token_changed = false
         wx.hideNavigationBarLoading()
@@ -463,6 +474,7 @@ Page({
       songInfo: msg
     })
     this.getMusicLrc()
+    this.data.carEventChannel && this.data.carEventChannel.emit('sendSongInfo', this.data.songInfo)
     for (let i = 0; i < this.data.messageList.length; i++) {
       if (this.data.messageList[i].type == 'play') {
         this.data.messageList.splice(i, 1);
@@ -613,8 +625,30 @@ Page({
   mainMenuClicked(e) {
     switch (e.mark.title) {
       case '驾驶':
-        this.setData({
-          isCarMode: !this.data.isCarMode
+        // this.setData({
+        //   isCarMode: !this.data.isCarMode
+        // })
+        wx.navigateTo({
+          url: '../song/car-mode?bbbug=' + app.globalData.systemVersion,
+          events: {
+            destroyed: () => {
+              this.setData({
+                carEventChannel: null
+              })
+            },
+            longPressPassTheSong: () => {
+              this.longPressPassTheSong()
+            },
+            tapToAddSong: () => {
+              this.tapToAddSong()
+            }
+          },
+          success: (res) => {
+            this.setData({
+              carEventChannel: res.eventChannel
+            })
+            res.eventChannel.emit('sendSongInfo', this.data.songInfo)
+          }
         })
         break
       case '点歌':
@@ -629,7 +663,12 @@ Page({
         break
       case '歌单':
         wx.navigateTo({
-          url: '../song/my?bbbug=' + app.globalData.systemVersion,
+          url: '../song/my?bbbug=' + app.globalData.systemVersion
+        })
+        break
+      case 'TA的歌单':
+        wx.navigateTo({
+          url: `../song/my?bbbug=${app.globalData.systemVersion}`
         })
         break
       case '在线':
@@ -978,6 +1017,23 @@ Page({
       isScrollEnabled: true
     })
     this.autoScroll()
+  },
+  tapToAddSong() {
+    app.request({
+      url: 'song/addMySong',
+      data: {
+        room_id: app.globalData.roomInfo.room_id,
+        mid: this.data.songInfo.song.mid
+      },
+      loading: '收藏中',
+      success: (res) => {
+        this.say(res.msg)
+      },
+      error: (res) => {
+        this.say(res.msg)
+        return true
+      }
+    })
   },
   longPressPassTheSong() {
     app.request({
