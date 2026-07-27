@@ -33,10 +33,6 @@
     <view class="bbbug_panel_icon"><i class="iconfont icon-icon_group"></i></view>
     <view class="bbbug_panel_title">在线</view>
   </view>
-  <view wx:if="{{userInfo.user_id == roomInfo.room_user}}" class="bbbug_panel_item" bindtap="mainMenuClicked" mark:title="换房">
-    <view class="bbbug_panel_icon"><i class="iconfont icon-icon_homepage"></i></view>
-    <view class="bbbug_panel_title">换房</view>
-  </view>
   <!-- <view wx:else class="bbbug_panel_item" bindtap="mainMenuClicked" mark:title="TA的歌单">
     <view class="bbbug_panel_icon"><i class="iconfont icon-icon_doc"></i></view>
     <view class="bbbug_panel_title">TA的歌单</view>
@@ -44,10 +40,6 @@
   <view  class="bbbug_panel_item" bindtap="mainMenuClicked" mark:title="资料">
     <view class="bbbug_panel_icon"><i class="iconfont icon-icon_compile"></i></view>
     <view class="bbbug_panel_title">资料</view>
-  </view>
-  <view class="bbbug_panel_item" bindtap="mainMenuClicked" mark:title="管理">
-    <view class="bbbug_panel_icon"><i class="iconfont icon-icon_boss"></i></view>
-    <view class="bbbug_panel_title">管理</view>
   </view>
   <!-- <view class="bbbug_panel_item" bindtap="mainMenuClicked" mark:title="分享">
     <view class="bbbug_panel_icon"><i class="iconfont icon-qrcode"></i></view>

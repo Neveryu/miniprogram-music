@@ -84,6 +84,7 @@ Component({
                 loading: "点歌中",
                 data: {
                   mid: song.mid,
+                  song: song,
                   room_id: app.globalData.roomInfo.room_id
                 },
                 success: (res) => {
@@ -117,6 +118,7 @@ Component({
                 url: 'song/playSong',
                 data: {
                   mid: song.mid,
+                  song: song,
                   room_id: app.globalData.roomInfo.room_id
                 },
                 loading: '播放中',

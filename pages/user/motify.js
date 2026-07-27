@@ -1,5 +1,4 @@
 const app = getApp()
-import { config as reqConfig } from '../../utils/request.js'
 Component({
   /**
    * 组件的属性列表
@@ -60,26 +59,22 @@ Component({
                   wx.showLoading({
                     title: '上传中'
                   })
-                  wx.uploadFile({
-                    url: app.globalData.request.apiUrl + 'attach/uploadHead',
-                    filePath: res.tempFilePaths[0],
-                    name: 'file',
-                    formData: Object.assign({}, reqConfig.baseData),
-                    success: (res) => {
-                      wx.hideLoading()
-                      res.data = JSON.parse(res.data)
-                      if (res.data.code == 200) {
-                        this.setData({
-                          user_head: app.globalData.request.cdnUrl + '/uploads/' + res.data.data.attach_path
-                        })
-                      } else {
-                        wx.showModal({
-                          title: '上传失败(' + res.data.code + ')',
-                          content: res.data.msg,
-                          showCancel: false
-                        })
-                      }
-                    },
+                  const cloudPath = `avatars/${Date.now()}-${Math.random().toString(16).slice(2)}.jpg`
+                  wx.cloud.uploadFile({
+                    cloudPath,
+                    filePath: res.tempFilePaths[0]
+                  }).then((uploadResult) => {
+                    wx.hideLoading()
+                    this.setData({
+                      user_head: uploadResult.fileID
+                    })
+                  }).catch((error) => {
+                    wx.hideLoading()
+                    console.error('[UploadAvatar]', error)
+                    wx.showToast({
+                      title: '头像上传失败',
+                      icon: 'none'
+                    })
                   })
                 },
               })
@@ -90,21 +85,9 @@ Component({
       })
     },
     logout() {
-      wx.showModal({
-        title: '退出登录',
-        content: '确认退出当前登录的帐号吗？',
-        confirmText: '退出',
-        confirmColor: '#f00',
-        success: (res) => {
-          if (res.confirm) {
-            app.globalData.userInfo = app.globalData.guestUserInfo
-            reqConfig.access_token = app.globalData.guestUserInfo.access_token
-            wx.setStorageSync('access_token', app.globalData.guestUserInfo.access_token)
-            wx.reLaunch({
-              url: '../index/index'
-            })
-          }
-        }
+      wx.showToast({
+        title: '云开发身份由微信管理',
+        icon: 'none'
       })
     },
     doSubmit(e) {

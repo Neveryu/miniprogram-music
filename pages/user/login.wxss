@@ -1,31 +1,39 @@
-.weui-cell {
-  padding: 15px;
-}
-
 .app_desc {
-  padding-bottom: 30px;
-}
-
-.weui-cells {
-  margin: 0px 20px;
-}
-
-.weui-label {
-  width: 60px;
-}
-
-.bbbug_login_sendmail::before {
-  font-size: 24px;
-}
-
-.wechat-login {
-  font-size: 14px;
-  color: #999;
+  padding: 0 40px 30px;
+  color: #888;
   text-align: center;
-  padding-bottom: 50px;
 }
 
-.wechat-login .iconfont {
-  color: #666;
-  font-size: 48px;
+.login-card {
+  margin: 0 24px;
+  padding: 40px 24px;
+  border-radius: 16px;
+  background-color: rgba(127, 127, 127, 0.08);
+  text-align: center;
+}
+
+.wechat-login-icon {
+  color: #07c160;
+  font-size: 56px;
+  line-height: 1;
+}
+
+.wechat-login-icon .iconfont {
+  font-size: 56px;
+}
+
+.login-title {
+  margin-top: 20px;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.login-desc {
+  margin-top: 10px;
+  color: #888;
+  font-size: 14px;
+}
+
+.wechat-login-button {
+  margin-top: 32px;
 }

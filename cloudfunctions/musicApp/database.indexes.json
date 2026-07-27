@@ -1,0 +1,51 @@
+{
+  "users": [
+    {
+      "name": "openid_unique",
+      "unique": true,
+      "fields": [{ "field": "_openid", "direction": "asc" }]
+    },
+    {
+      "name": "last_active",
+      "unique": false,
+      "fields": [{ "field": "last_active_at", "direction": "desc" }]
+    }
+  ],
+  "rooms": [
+    {
+      "name": "room_id_unique",
+      "unique": true,
+      "fields": [{ "field": "room_id", "direction": "asc" }]
+    }
+  ],
+  "messages": [
+    {
+      "name": "room_time",
+      "unique": false,
+      "fields": [
+        { "field": "room_id", "direction": "asc" },
+        { "field": "created_timestamp", "direction": "desc" }
+      ]
+    }
+  ],
+  "play_queue": [
+    {
+      "name": "room_sort",
+      "unique": false,
+      "fields": [
+        { "field": "room_id", "direction": "asc" },
+        { "field": "sort_time", "direction": "asc" }
+      ]
+    }
+  ],
+  "playlists": [
+    {
+      "name": "owner_song_unique",
+      "unique": true,
+      "fields": [
+        { "field": "_openid", "direction": "asc" },
+        { "field": "mid", "direction": "asc" }
+      ]
+    }
+  ]
+}

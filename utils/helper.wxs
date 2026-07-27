@@ -2,11 +2,13 @@ module.exports.urldecode = function (str) {
   return decodeURIComponent(str);
 };
 module.exports.getStaticUrl = function (url) {
+  if (!url) {
+    return '';
+  }
   if (url.indexOf("https://") == 0 || url.indexOf("http://") == 0) {
     return url;
-  } else {
-    return "https://bbbug.hamm.cn/uploads/" + url;
   }
+  return url;
 };
 module.exports.getImageWidth = function (url) {
   if (url.indexOf('images/emoji/') >= 0) {

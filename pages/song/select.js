@@ -57,6 +57,7 @@ Component({
                 url: 'song/addSong',
                 data: {
                   mid: song.mid,
+                  song: song,
                   at: false,
                   room_id: app.globalData.roomInfo.room_id
                 },
@@ -73,7 +74,8 @@ Component({
                 url: 'song/addMySong',
                 data: {
                   room_id: app.globalData.roomInfo.room_id,
-                  mid: song.mid
+                  mid: song.mid,
+                  song: song
                 },
                 loading: '收藏中',
                 success: (res) => {
@@ -88,6 +90,7 @@ Component({
                 url: 'song/playSong',
                 data: {
                   mid: song.mid,
+                  song: song,
                   room_id: app.globalData.roomInfo.room_id
                 },
                 loading: '播放中',

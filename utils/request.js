@@ -1,21 +1,17 @@
+const cloudConfig = require('../config/cloud.js')
+
 let _showLogin = () => {
   wx.navigateTo({
-    url: '../user/login?bbbug=' + 0
+    url: '../user/login?bbbug=0'
   })
 }
 
-// 网络请求相关参数
 let config = {
-  apiUrl: 'https://api.bbbug.com/api/',
-  cdnUrl: 'https://bbbug.hamm.cn/',
-  baseData: {
-    access_token: '',
-    plat: 'weapp',
-    version: 10000
-  },
+  apiUrl: '',
+  cdnUrl: '',
+  baseData: {},
   code: {
     success: 200,
-    access_token_missing: 400,
     login: 401,
     updateForce: 301,
     update: 302,
@@ -24,159 +20,84 @@ let config = {
   }
 }
 
-/**
- * 高度封装了一个request方法 参数随便传 报错算我输
- * type
- * url
- * loading: string,
- * data: Object,
- * success: Function
- */
-const request = (data = {}, cb) => {
-  if(cb && typeof(cb) == 'function') {
-    // not todo
+const getCloudErrorContent = (error) => {
+  const errCode = error.errCode || error.code || 'UNKNOWN'
+  const errMsg = error.errMsg || error.message || '未知错误'
+  const normalized = `${errCode} ${errMsg}`.toLowerCase()
+  let reason = '云服务调用失败，请查看云函数日志。'
+  if (normalized.indexOf('function not found') > -1 || normalized.indexOf('-501000') > -1) {
+    reason = `${cloudConfig.functionName} 云函数尚未部署到目标环境。`
+  } else if (normalized.indexOf('env') > -1 && normalized.indexOf('not found') > -1) {
+    reason = '云环境不存在或环境 ID 配置错误。'
+  } else if (normalized.indexOf('permission') > -1 || normalized.indexOf('unauthorized') > -1) {
+    reason = '当前 AppID 没有该云环境或云函数的访问权限。'
   }
-  if (data.type) {
-    switch (data.type.toLowerCase()) {
-      case 'json':
-        data.type = 'application/json'
-        break
-      case 'form':
-        data.type = 'application/x-www-form-urlencoded'
-        break
-      default:
-    }
-  }
-  
-  // 默认使用json，除非按上面的switch传入指定的content-type
-  data.type = data.type || 'application/json'
+  return `${reason}\n环境：${cloudConfig.env}\n函数：${cloudConfig.functionName}\n错误：${errCode}\n${errMsg}`
+}
 
-  // 预处理是绝对地址还是相对地址，后者需拼接请求基础参数的API根地址(不是以https://或者http://开头的)
-  if (data.url.indexOf('https://') < 0 && data.url.indexOf('http://') < 0) {
-    data.url = config.apiUrl + (data.url || '')
-  }
-
-  //读取本地缓存的access_token
-  let access_token = wx.getStorageSync('access_token')
-  //设置access_token到基础请求参数
-  config.baseData.access_token = access_token || ''
-
-  //是否显示Loading 默认不显示Loading
+const request = (data = {}) => {
   if (data.loading) {
     wx.showLoading({
       mask: true,
       title: data.loading
     })
   }
-  wx.request({
-    url: data.url,
-    // 默认使用POST请求，除非指定method
-    method: data.method || 'POST',
-    // 默认使用application/json基础header，除非完全自定义header
-    header: data.header || {
-      'content-type': data.type
+
+  wx.cloud.callFunction({
+    name: cloudConfig.functionName,
+    config: {
+      env: cloudConfig.env
     },
-    // 将基础请求参数和本次请求参数合并
     data: {
-      ...config.baseData,
-      ...(data.data || {})
-    },
-    // 固定返回数据格式 默认json 除非指定其他
-    dataType: data.dataType || 'json',
-    success(res) {
-      // 是否有loading需要关闭
-      data.loading && wx.hideLoading()
-      try {
-        switch (res.data.code) {
-          case config.code.success:
-            // 操作成功
-            if (data.success) {
-              data.success(res.data)
-            } else {
-              wx.showModal({
-                title: '操作成功',
-                content: res.data.msg,
-                showCancel: false
-              })
-            }
-            break
-          case config.code.access_token_missing:
-            wx.showToast({
-              icon: 'none',
-              title: res.data.msg
-            })
-            break
-          case config.code.login:
-            // 需要登录
-            if (data.login) {
-              data.login(res.data)
-            } else {
-              wx.showModal({
-                title: '身份验证失败',
-                content: res.data.msg,
-                showCancel: false,
-                success: function () {
-                  _showLogin()
-                }
-              })
-            }
-            break
-          case config.code.hide:
-            wx.reLaunch({
-              url: '../index/index',
-            })
-            break
-          default:
-            // 解析其他状态码
-            if (data.error) {
-              let dontAlert = data.error(res.data)
-              if (!dontAlert) {
-                wx.showModal({
-                  title: '操作失败(' + res.data.code + ')',
-                  content: res.data.msg,
-                  showCancel: false
-                })
-              }
-            } else {
-              wx.showModal({
-                title: '操作失败(' + res.data.code + ')',
-                content: res.data.msg,
-                showCancel: false
-              })
-            }
+      action: data.url,
+      payload: data.data || {}
+    }
+  }).then((result) => {
+    data.loading && wx.hideLoading()
+    const response = result.result || {}
+    switch (response.code) {
+      case config.code.success:
+        if (data.success) {
+          data.success(response)
         }
-      } catch (e) {
-        // 解析可能发生的异常
-        if (data.fail) {
-          data.fail(e)
-          wx.showModal({
-            title: '数据错误',
-            content: '解析服务器数据失败，请稍候再试！',
-            showCancel: false
-          })
+        break
+      case config.code.login:
+        if (data.login) {
+          data.login(response)
         } else {
           wx.showModal({
-            title: '数据错误',
-            content: '解析服务器数据失败，请稍候再试！',
-            showCancel: false
+            title: '身份验证失败',
+            content: response.msg || '请先登录',
+            showCancel: false,
+            success: _showLogin
           })
         }
-      }
-    },
-    fail(res) {
-      // 是否有loading需要关闭
-      data.loading && wx.hideLoading()
-      // 解析可能发生的异常
-      if (data.fail) {
-        data.fail(res)
-      } else {
+        break
+      default:
+        if (data.error) {
+          const dontAlert = data.error(response)
+          if (dontAlert) {
+            return
+          }
+        }
         wx.showModal({
-          title: '连接失败',
-          content: '网络连接失败，请稍候再试！',
+          title: '操作失败',
+          content: response.msg || '云服务调用失败',
           showCancel: false
         })
-      }
     }
+  }).catch((error) => {
+    data.loading && wx.hideLoading()
+    console.error('[CloudRequest]', data.url, error)
+    if (data.fail) {
+      data.fail(error)
+      return
+    }
+    wx.showModal({
+      title: '云服务连接失败',
+      content: getCloudErrorContent(error),
+      showCancel: false
+    })
   })
 }
 

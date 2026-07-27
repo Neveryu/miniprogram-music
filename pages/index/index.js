@@ -1,6 +1,5 @@
 import config from '../../config/index.js'
 import api from '../../config/api.js'
-import { config as reqConfig } from '../../utils/request.js'
 const app = getApp()
 var WechatSI = requirePlugin('WechatSI')
 let WechatRecord = WechatSI.getRecordRecognitionManager()
@@ -29,19 +28,13 @@ Page({
     messageList: [],
     historyMax: 20,
     bottomHeight: 0,
-    default_room: 10865,
-    room_id: 0,
+    default_room: 1,
+    room_id: 1,
     room_password: '',
     bbbug_view_id: '',
     bbbug_view_scroll: '',
-    websocket: {
-      url: '',
-      task: null,
-      connected: false,
-      forceStop: false,
-      reconnectTimer: false,
-      heartBeatTimer: false
-    },
+    messageWatcher: null,
+    roomWatcher: null,
     bgPlayer: null,
     audioPlayer: null,
     userInfo: null,
@@ -64,8 +57,7 @@ Page({
   onLoad(options) {
     // 初始化emoji列表
     this.data.emojiList = config.emojiList
-    // 响应token变化
-    app.watchAccessToken(() => {
+    app.watchUser(() => {
       this.getMyInfo()
     })
     // 响应歌词变化
@@ -80,11 +72,6 @@ Page({
     })
     // 初始化一个背景音频管理器；小程序切入后台，如果音频处于播放状态，可以继续播放。但是后台状态不能通过调用API操纵音频的播放状态。
     this.data.bgPlayer = wx.getBackgroundAudioManager()
-    if (options && options.scene) {
-      wx.setStorageSync('room_id', options.scene)
-    } else if (options && options.room_id) {
-      wx.setStorageSync('room_id', options.room_id)
-    }
     // this.data.bottomHeight = app.systemInfo.safeArea.bottom - app.systemInfo.safeArea.height + 40
     /**
      * 因为bottomHeight在dom初始化中已经使用了，所以这里要修改它实现响应式变化，必须使用setData
@@ -93,16 +80,7 @@ Page({
     this.setData({
       bottomHeight: app.systemInfo.safeArea.bottom - app.systemInfo.safeArea.height + 40
     })
-    // 初始化房间号
-    this.data.room_id = wx.getStorageSync('room_id') || this.data.default_room
-    let plat = app.systemInfo.platform.toLowerCase()
-    if (plat == 'windows' || plat == 'mac') {
-      wx.redirectTo({
-        url: '../pc/index?bbbug=' + app.globalData.systemVersion + '&url=' + encodeURIComponent('https://bbbug.com'),
-      });
-      wx.hideHomeButton()
-      return
-    }
+    this.data.room_id = this.data.default_room
     /**
      * 监听背景音频播放进度更新事件，只有小程序在前台时会回调。
      * 这里用户歌词的轮动显示
@@ -138,7 +116,8 @@ Page({
           url: 'song/addMySong',
           data: {
             room_id: app.globalData.roomInfo.room_id,
-            mid: this.data.songInfo.song.mid
+            mid: this.data.songInfo.song.mid,
+            song: this.data.songInfo.song
           },
           loading: '收藏中',
           success: (res) => {
@@ -198,7 +177,7 @@ Page({
           userInfo: res.data
         })
         app.globalData.userInfo = res.data
-        app.globalData.access_token_changed = false
+        app.globalData.user_changed = false
         wx.hideNavigationBarLoading()
         if (reloadRoom) {
           this.getRoomInfo()
@@ -236,8 +215,8 @@ Page({
             title: res.data.room_name
           })
         }
-        this.getWebsocketUrl()
         this.getMessageList()
+        this.watchCloudData()
       },
       error: (res) => {
         wx.hideNavigationBarLoading()
@@ -251,79 +230,54 @@ Page({
       }
     })
   },
-  getWebsocketUrl() {
-    wx.showNavigationBarLoading()
-    app.request({
-      url: api.getWebsocketUrl,
-      data: {
-        channel: this.data.room_id,
-      },
-      success: (res) => {
-        wx.hideNavigationBarLoading()
-        // this.data.websocket.url = 'wss://websocket.bbbug.com?account=' + res.data.account + "&channel=" + res.data.channel + "&ticket=" + res.data.ticket
-        this.data.websocket.url = `wss://websocket.bbbug.com?account=${res.data.account}&channel=${res.data.channel}&ticket=${res.data.ticket}`
-        this.connectWebsocket()
-      },
-      error(res) {
-        wx.hideNavigationBarLoading()
-      }
-    })
-  },
-  connectWebsocket() {
-    if (this.data.websocket.connected) {
-      this.data.websocket.forceStop = true
-      this.data.websocket.task.send({
-        data: 'bye'
-      })
-      this.data.websocket.reconnectTimer = setTimeout(() => {
-        this.connectWebsocket()
-        console.log('waiting')
-      }, 100)
-    } else {
-      this.data.websocket.task = wx.connectSocket({
-        url: this.data.websocket.url,
-      })
-      this.data.websocket.task.onOpen(() => {
-        this.data.websocket.forceStop = false
-        this.data.websocket.connected = true
-        // 原代码心跳实现不健壮，几乎等于没实现，暂时注释掉下面一行
-        this.websocketHeartBeat()
-      })
-      this.data.websocket.task.onMessage((data) =>{
-        let msg = false
-        try {
-          msg = JSON.parse(data.data)
-        } catch (err) {
+  watchCloudData() {
+    this.closeCloudWatchers()
+    const db = wx.cloud.database()
+    this.data.messageWatcher = db.collection('messages').where({ room_id: 1 }).watch({
+      onChange: (snapshot) => {
+        if (!snapshot.docs) {
           return
         }
-        if (msg) {
-          this.messageController(msg)
+        const messageList = snapshot.docs
+          .sort((a, b) => a.created_timestamp - b.created_timestamp)
+          .slice(-this.data.historyMax)
+          .map((item) => ({
+            ...item.payload,
+            message_id: item._id,
+            message_time: item.created_timestamp
+          }))
+        const welcome = this.data.roomInfo && this.data.roomInfo.room_notice
+        if (welcome) {
+          messageList.unshift({
+            type: 'system',
+            content: welcome
+          })
         }
-      })
-      this.data.websocket.task.onClose(() => {
-        this.data.websocket.connected = false
-        this.data.websocket.task = null
-        if (!this.data.websocket.forceStop) {
-          this.reconnectWebsocket()
+        this.setData({ messageList })
+        this.autoScroll()
+      },
+      onError: (error) => console.error('[MessageWatcher]', error)
+    })
+    this.data.roomWatcher = db.collection('rooms').where({ room_id: 1 }).watch({
+      onChange: (snapshot) => {
+        const room = snapshot.docs && snapshot.docs[0]
+        if (!room) {
+          return
         }
-      })
-    }
+        this.setData({ roomInfo: room })
+        app.globalData.roomInfo = room
+        if (room.current_song && (!this.data.songInfo || room.current_song._id !== this.data.songInfo._id)) {
+          this.playMusic(room.current_song)
+        }
+      },
+      onError: (error) => console.error('[RoomWatcher]', error)
+    })
   },
-  websocketHeartBeat() {
-    if (this.data.websocket.connected) {
-      this.data.websocket.task.send({
-        data: 'heartBeat'
-      })
-      clearTimeout(this.data.websocket.heartBeatTimer)
-      this.data.websocket.heartBeatTimer = setTimeout(() => {
-        this.websocketHeartBeat()
-      }, 10000)
-    }
-  },
-  reconnectWebsocket() {
-    if (!this.data.websocket.connected) {
-      this.connectWebsocket()
-    }
+  closeCloudWatchers() {
+    this.data.messageWatcher && this.data.messageWatcher.close()
+    this.data.roomWatcher && this.data.roomWatcher.close()
+    this.data.messageWatcher = null
+    this.data.roomWatcher = null
   },
   messageController(msg) {
     console.log('长链接发送过来的数据：', msg)
@@ -451,6 +405,14 @@ Page({
   },
   // 歌词
   getMusicLrc() {
+    const song = this.data.songInfo && this.data.songInfo.song
+    if (song && Array.isArray(song.lrc) && song.lrc.length) {
+      this.setData({
+        musicLrcObj: song.lrc,
+        lrcString: '歌词加载中...'
+      })
+      return
+    }
     this.setData({
       musicLrcObj: [],
       lrcString: '歌词读取中...'
@@ -458,7 +420,8 @@ Page({
     app.request({
       url: 'song/getLrc',
       data: {
-        mid: this.data.songInfo.song.mid
+        mid: this.data.songInfo.song.mid,
+        lrc: this.data.songInfo.song.lrc || []
       },
       success: (res) => {
         this.setData({
@@ -488,7 +451,14 @@ Page({
     this.setData({
       messageList: this.data.messageList
     })
-    this.data.bgPlayer.src = reqConfig.apiUrl + '/song/playurl?mid=' + msg.song.mid
+    if (!msg.song.url) {
+      wx.showToast({
+        title: '歌曲缺少播放地址',
+        icon: 'none'
+      })
+      return
+    }
+    this.data.bgPlayer.src = msg.song.url
     this.data.bgPlayer.title = msg.song.name + ' - ' + msg.song.singer
     this.data.bgPlayer.singer = '点歌人: ' + decodeURIComponent(msg.user.user_name) + ' ' + this.data.roomInfo.room_name + ' '
     this.data.bgPlayer.coverImgUrl = msg.song.pic
@@ -585,7 +555,13 @@ Page({
         this.setData({
           messageList: messageList
         });
-        this.addSystemMessage(this.data.roomInfo.room_notice ? this.data.roomInfo.room_notice : ('欢迎来到' + this.data.roomInfo.room_name + '!'))
+        messageList.unshift({
+          type: 'system',
+          content: this.data.roomInfo.room_notice ? this.data.roomInfo.room_notice : ('欢迎来到' + this.data.roomInfo.room_name + '!')
+        })
+        this.setData({
+          messageList: messageList
+        })
         this.autoScroll()
       }
     })
@@ -684,31 +660,11 @@ Page({
           }
         })
         break
-      case '换房':
-        wx.navigateTo({
-          url: '../room/select?bbbug=' + app.globalData.systemVersion,
-          events: {
-            changeRoomSuccess: (room_id) => {
-              this.setData({
-                room_id: room_id
-              })
-              this.setData({
-                songInfo: false
-              })
-              this.data.bgPlayer.stop()
-              this.getRoomInfo()
-            }
-          }
-        })
-        break
       case '注销':
-        app.globalData.userInfo = app.globalData.guestUserInfo
-        reqConfig.baseData.access_token = app.globalData.guestUserInfo.access_token
-        wx.setStorageSync('access_token', app.globalData.guestUserInfo.access_token)
-        this.setData({
-          userInfo: app.globalData.userInfo
+        wx.showToast({
+          title: '云开发身份由微信管理',
+          icon: 'none'
         })
-        this.getMyInfo()
         break
       case '资料':
         wx.navigateTo({
@@ -720,21 +676,9 @@ Page({
           }
         })
         break
-      case '管理':
-        wx.navigateTo({
-          url: '../room/motify?bbbug=' + app.globalData.systemVersion,
-          events: {
-            reloadMessage: () => {
-              this.getMessageList()
-            }
-          }
-        })
-        break
       case '分享':
-        let imgUrl = 'https://api.bbbug.com/api/weapp/qrcode?room_id=' + this.data.room_id
-        wx.previewImage({
-          urls: [imgUrl],
-          current: imgUrl
+        wx.showShareMenu({
+          withShareTicket: true
         })
         break
       default:
@@ -890,7 +834,8 @@ Page({
               url: api.addMySong,
               data: {
                 room_id: app.globalData.roomInfo.room_id,
-                mid: this.data.songInfo.song.mid
+                mid: this.data.songInfo.song.mid,
+                song: this.data.songInfo.song
               },
               loading: '收藏中',
               success: (res) => {
@@ -963,16 +908,18 @@ Page({
     wx.vibrateShort()
   },
   getStaticUrl(str) {
+    if (!str) {
+      return ''
+    }
     if (str.indexOf('https://') == 0 || str.indexOf('http://') == 0) {
       return str.replace('http://', 'https://')
-    } else {
-      return reqConfig.cdnUrl + '/uploads/' + str
     }
+    return str
   },
   sendEmoji(e) {
     let url = false
     if (e.mark.url.indexOf('/res/Emojis/') > -1) {
-      url = reqConfig.cdnUrl + '/images/emoji/' + e.mark.url.replace('/res/Emojis/', '')
+      url = e.mark.url
     } else {
       url = e.mark.url
     }
@@ -1023,7 +970,8 @@ Page({
       url: 'song/addMySong',
       data: {
         room_id: app.globalData.roomInfo.room_id,
-        mid: this.data.songInfo.song.mid
+        mid: this.data.songInfo.song.mid,
+        song: this.data.songInfo.song
       },
       loading: '收藏中',
       success: (res) => {
@@ -1056,6 +1004,13 @@ Page({
   sendMessage(e) {
     let message = e.detail.value
     if (!message) {
+      return
+    }
+    if (message.trim().length > 1000) {
+      wx.showToast({
+        title: '消息不能超过1000字',
+        icon: 'none'
+      })
       return
     }
     if (this.data.isEmojiBoxShow) {
@@ -1103,8 +1058,15 @@ Page({
         this.autoScroll()
       },
       error: (res) => {
+        for (let i = this.data.messageList.length - 1; i >= 0; i--) {
+          if (this.data.messageList[i].loading) {
+            this.data.messageList.splice(i, 1)
+            break
+          }
+        }
         this.setData({
-          message: message
+          message: message,
+          messageList: this.data.messageList
         })
       }
     })
@@ -1118,37 +1080,30 @@ Page({
         wx.showLoading({
           title: '发送中',
         })
-        wx.uploadFile({
-          url: reqConfig.apiUrl + 'attach/uploadImage',
-          filePath: res.tempFilePaths[0],
-          name: 'file',
-          formData: reqConfig.baseData,
-          success: (res) => {
-            wx.hideLoading()
-            res.data = JSON.parse(res.data)
-            if (res.data.code == 200) {
-              let url = reqConfig.cdnUrl + '/uploads/' + res.data.data.attach_path
-              app.request({
-                url: 'message/send',
-                data: {
-                  where: 'channel',
-                  to: this.data.room_id,
-                  type: 'img',
-                  msg: url,
-                  resource: url,
-                },
-                success: (res) => {
-                  this.hideAllDialog()
-                }
-              })
-            } else {
-              wx.showModal({
-                title: '上传失败(' + res.data.code + ')',
-                content: res.data.msg,
-                showCancel: false
-              })
-            }
-          }
+        const cloudPath = `messages/${Date.now()}-${Math.random().toString(16).slice(2)}.jpg`
+        wx.cloud.uploadFile({
+          cloudPath,
+          filePath: res.tempFilePaths[0]
+        }).then((uploadResult) => {
+          wx.hideLoading()
+          app.request({
+            url: 'message/send',
+            data: {
+              where: 'channel',
+              to: this.data.room_id,
+              type: 'img',
+              msg: uploadResult.fileID,
+              resource: uploadResult.fileID,
+            },
+            success: () => this.hideAllDialog()
+          })
+        }).catch((error) => {
+          wx.hideLoading()
+          console.error('[UploadMessageImage]', error)
+          wx.showToast({
+            title: '图片上传失败',
+            icon: 'none'
+          })
         })
       }
     })
@@ -1162,5 +1117,8 @@ Page({
     wx.navigateTo({
       url: '../user/login?bbbug=' + app.globalData.systemVersion
     })
+  },
+  onUnload() {
+    this.closeCloudWatchers()
   }
 })

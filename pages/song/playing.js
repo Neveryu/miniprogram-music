@@ -103,6 +103,7 @@ Component({
                 data: {
                   room_id: app.globalData.roomInfo.room_id,
                   mid: song.song.mid,
+                  song: song.song,
                 },
                 loading: '收藏中',
                 success: (res) => {

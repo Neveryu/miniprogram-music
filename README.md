@@ -1,21 +1,22 @@
-# miniprogram-music
-<h1 align="center">微信小程序——音乐播放器</h1>
-<p align="center">
-<a href="https://github.com/HammCn/BBBUG-Wechat-App" target="_blank">Github</a> | 
-<a href="https://gitee.com/bbbug_com/bbbug-wechat-app" target="_blank">Gitee</a>
-</p>
-<p align="center">
-<!-- <a href="https://gitee.com/bbbug_com/bbbug-wechat-app/stargazers" target="_blank"><img src="https://svg.hamm.cn/gitee.svg?type=star&user=bbbug_com&project=bbbug-wechat-app"/></a> -->
-<!-- <a href="https://gitee.com/bbbug_com/bbbug-wechat-app/members" target="_blank"><img src="https://svg.hamm.cn/gitee.svg?type=fork&user=bbbug_com&project=bbbug-wechat-app"/></a> -->
-<!-- <img src="https://svg.hamm.cn/badge.svg?key=Platform&value=微信小程序"/> -->
-</p>
-<p align="center">
-</p>
+# Music For U
 
-<p align="center">
-<a href="https://bbbug.com" target="_blank"><img src="https://api.bbbug.com/api/badge/10865"/></a>
-</p>
+基于微信云开发的单房间音乐聊天室小程序。
 
-### 介绍
+## 当前架构
 
-一个可以聊天听歌的音乐聊天室，支持了Gitee/OSChina/QQ/钉钉等OAuth登录，支持多房间和创建私人房间，支持房间加密和切换房间模式，支持绑定二级域名与顶级域名，提供了第三方网站的快速接入方案。此仓库为微信小程序仓库。QQ群1140258698
+- 微信身份：云函数通过 `OPENID` 自动识别用户。
+- 业务服务：`cloudfunctions/musicApp` 统一处理用户、消息、歌曲队列和收藏。
+- 数据存储：云数据库保存用户、默认房间、消息、播放队列和歌单。
+- 实时同步：客户端通过云数据库 `watch` 监听消息和当前歌曲。
+- 文件资源：头像和聊天图片上传到云存储。
+- 房间模型：仅保留一个默认房间，不提供创建、搜索和切换房间。
+
+## 项目入口
+
+- 云开发迁移与部署说明：[docs/cloud-development.md](docs/cloud-development.md)
+- 完整 Code Wiki：[docs/code-wiki/README.md](docs/code-wiki/README.md)
+- 云函数入口：[cloudfunctions/musicApp/index.js](cloudfunctions/musicApp/index.js)
+
+## 音乐接口
+
+计划接入 `https://www.hanxin.vip/api/music`。该地址目前在常见参数组合下返回空响应，歌曲搜索适配需要接口参数、鉴权方式和响应示例才能完成。其他云开发业务已与该适配器解耦。
