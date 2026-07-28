@@ -1,2 +1,3 @@
 *.zip
 account.js
+node_modules/
