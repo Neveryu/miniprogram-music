@@ -11,6 +11,26 @@
   margin: 30px;
 }
 
+.avatar_button {
+  width: 102px;
+  height: 102px;
+  padding: 0;
+  margin: 0 auto 8px;
+  border-radius: 50%;
+  background: transparent;
+  line-height: 1;
+}
+
+.avatar_button::after {
+  border: none;
+}
+
+.avatar_hint {
+  margin-bottom: 8px;
+  color: #888;
+  font-size: 13px;
+}
+
 .footer {
   text-align: center;
   position: fixed;
@@ -36,20 +56,6 @@
   font-size: 16px;
   font-weight: bold;
   vertical-align: middle;
-}
-
-.syncWechatUserInfo i {
-  font-size: 20px;
-  vertical-align: middle;
-}
-
-.syncWechatUserInfo button::after {
-  border: none;
-}
-
-.syncWechatUserInfo button {
-  background: none;
-  font-size: 16px;
 }
 
 .user_head image {

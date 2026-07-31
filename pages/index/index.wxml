@@ -20,9 +20,6 @@
               <block wx:if="{{item.user.user_id==roomInfo.room_user}}">
                 <view class="bbbug_user_role">房</view>
               </block>
-              <block wx:if="{{item.user.user_id!=roomInfo.room_user}}">
-                <view class="bbbug_user_role" wx:if="{{item.user.user_admin}}">管</view>
-              </block>
             </view>
           </view>
           <view class="bbbug_content" bindlongpress="longTapToMessage" mark:msg="{{item}}" bindtap="hideAllDialog">
@@ -47,6 +44,11 @@
                 style="width:{{helper.getImageWidth(item.content)+'px'}};height:{{helper.getImageWidth(item.content)+'px'}};"
                 mode="widthFix" lazy-load="true" bindtap="previewImage" mark:url="{{item.resource}}" />
             </view>
+            <view class="bbbug_voice {{voicePlayingId==item.message_id?'playing':''}}" wx:if="{{item.type=='voice'}}"
+              bindtap="playVoice" mark:msg="{{item}}">
+              <i class="iconfont icon-sound"></i>
+              <text>{{helper.voiceDuration(item.duration)}}</text>
+            </view>
             <view class="bbbug_link" wx:if="{{item.type=='link'}}">
               <view class="bbbug_link_title">{{helper.urldecode(item.title)}}</view>
               <view class="bbbug_link_desc">{{helper.urldecode(item.desc)||'没有读取到网站描述信息...'}}</view>
@@ -57,12 +59,10 @@
               <view class="bbbug_link_desc">{{item.jump.room_notice}}</view>
               <view class="bbbug_link_url">房间飞机票</view>
             </view>
-            <view wx:if="{{item.at && item.at.message}}">
-              <view class="bbbug_quot" wx:if="{{item.at.message.type=='text'}}">
-                {{helper.urldecode(item.at.message.content)}}</view>
-              <view class="bbbug_quot" wx:if="{{item.at.message.type=='img'}}">[图片]</view>
-              <view class="bbbug_quot" wx:if="{{item.at.message.type=='jump'}}">[飞机票]</view>
-              <view class="bbbug_quot" wx:if="{{item.at.message.type=='link'}}">[链接]</view>
+            <view wx:if="{{item.reply}}">
+              <view class="bbbug_quot" wx:if="{{item.reply.type=='text'}}">{{helper.urldecode(item.reply.user_name)}}：{{helper.urldecode(item.reply.content)}}</view>
+              <view class="bbbug_quot" wx:if="{{item.reply.type=='img'}}">{{helper.urldecode(item.reply.user_name)}}：[图片]</view>
+              <view class="bbbug_quot" wx:if="{{item.reply.type=='voice'}}">{{helper.urldecode(item.reply.user_name)}}：[语音]</view>
             </view>
             <view class="bbbug_time" wx:if="{{item.loading}}">　<i class="iconfont icon-loading"></i></view>
             <view class="bbbug_time" wx:if="{{!item.loading}}">{{helper.friendlyTime(item.message_time)}}</view>
@@ -87,6 +87,7 @@
       <view wx:if="{{atMessageObj.message.type=='jump'}}">[飞机票]</view>
       <view wx:if="{{atMessageObj.message.type=='link'}}">[链接]</view>
       <view wx:if="{{atMessageObj.message.type=='img'}}">[图片]</view>
+      <view wx:if="{{atMessageObj.message.type=='voice'}}">[语音]</view>
       <i class="iconfont icon-close"></i>
     </view>
   </view>
@@ -127,24 +128,6 @@
   <include src='./template/car-model.wxml'/>
 </view>
 
-<view wx:if="{{showPasswordForm}}" class="passwordForm">
-  <view class="tips">该房间需要输入密码</view>
-  <form bindsubmit="doPasswordSubmit">
-    <view class="weui-cells weui-cells_after-title">
-      <view class="weui-cell weui-cell_input">
-        <view class="weui-cell__bd">
-          <input class="weui-input" placeholder="请输入房间密码" password="true" name="password" />
-        </view>
-      </view>
-    </view>
-    <view class="weui-btn-area">
-      <button form-type="submit" class="weui-btn" type="primary">确认密码</button>
-    </view>
-    <view class="footer">
-      <view class="logout" bindtap="doEnterDefaultRoom"><i class="iconfont icon-poweroff"></i>取消进入</view>
-    </view>
-  </form>
-</view>
 <view wx:if="{{newsShow}}"
   style="position:fixed;left:0;right:0;top:0;bottom:0;z-index:99;background-color:#f5f5f5;overflow:hidden;overflow-y:scroll;">
   <view wx:for="{{newsList}}" wx:key="item" wx:if="{{item.type=='project'}}" bindtap="openNewsDetail"

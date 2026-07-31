@@ -49,9 +49,14 @@ Component({
     },
     showMenu(e) {
       let song = e.mark.item
-      let menu = ['顶歌', '收藏']
-      if (app.globalData.roomInfo && app.globalData.userInfo && (app.globalData.roomInfo.room_user == app.globalData.userInfo.user_id || app.globalData.userInfo.user_admin || app.globalData.userInfo.user_id == song.user.user_id)) {
-        menu = ['顶歌', '收藏', '移除']
+      const isOwner = app.globalData.roomInfo && app.globalData.userInfo && app.globalData.roomInfo.room_user == app.globalData.userInfo.user_id
+      const isRequester = app.globalData.userInfo && app.globalData.userInfo.user_id == song.user.user_id
+      let menu = ['收藏']
+      if (isOwner) {
+        menu.unshift('顶歌')
+      }
+      if (isOwner || isRequester) {
+        menu.push('移除')
       }
       wx.showActionSheet({
         itemList: menu,
@@ -67,17 +72,9 @@ Component({
                 },
                 success: (res) => {
                   this.getSongList()
-                  if (app.globalData.roomInfo && app.globalData.userInfo && (app.globalData.roomInfo.room_user == app.globalData.userInfo.user_id || app.globalData.userInfo.user_admin)) {
-                    wx.showToast({
-                      title: '置顶成功'
-                    })
-                  } else {
-                    wx.showModal({
-                      title: '置顶成功',
-                      content: res.msg,
-                      showCancel: false,
-                    })
-                  }
+                  wx.showToast({
+                    title: '置顶成功'
+                  })
                 }
               })
               break

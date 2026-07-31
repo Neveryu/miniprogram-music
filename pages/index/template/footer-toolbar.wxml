@@ -1,5 +1,8 @@
 <!-- 底部菜单栏 -->
 <view class="bbbug_input" bindtap="footerTapedToFocus" wx:if="{{!isCarMode}}">
+  <view class="bbbug_voice_toggle" catchtap="toggleVoiceMode">
+    <i class="iconfont {{voiceMode?'icon-icon_compile':'icon-icon_voice'}}"></i>
+  </view>
   <view class="bbbug_face" catchtap="showOrHideEmojiBox">
     <image src="/res/image/add.png" />
   </view>
@@ -7,9 +10,11 @@
   <!-- <input type="text" confirm-type="{{messageSendButton}}" confirm-hold="{{messageConfirmHold}}"
     bindconfirm="sendMessage" focus="{{messageFocus}}" value="{{message}}" bindinput="messageChanged"
     bindblur="messageBlured" cursor-spacing="15" /> -->
-  <input type="text" confirm-type="{{messageSendButton}}" confirm-hold="{{messageConfirmHold}}"
+  <input wx:if="{{!voiceMode}}" type="text" confirm-type="{{messageSendButton}}" confirm-hold="{{messageConfirmHold}}"
     bindconfirm="sendMessage" focus="{{messageFocus}}" placeholder="{{messagePlaceHolder}}" value="{{message}}"
     cursor-spacing="15" catchtap="" bindfocus="messageFocused" />
+  <view wx:if="{{voiceMode}}" class="bbbug_voice_hold {{isRecording?'recording':''}}" catchtouchstart="startVoiceRecord"
+    catchtouchend="stopVoiceRecord" catchtouchcancel="stopVoiceRecord">{{isRecording?'松开发送':'按住说话'}}</view>
   <view class="bbbug_more" catchtap="showMainMenu">
     <image src="/res/image/more.png" />
   </view>
@@ -25,18 +30,10 @@
     <view class="bbbug_panel_icon"><i class="iconfont icon-icon_dispose"></i></view>
     <view class="bbbug_panel_title">已点</view>
   </view>
-  <view class="bbbug_panel_item" bindtap="mainMenuClicked" mark:title="歌单">
+  <view class="bbbug_panel_item" bindtap="mainMenuClicked" mark:title="收藏">
     <view class="bbbug_panel_icon"><i class="iconfont icon-icon_doc"></i></view>
-    <view class="bbbug_panel_title">歌单</view>
+    <view class="bbbug_panel_title">收藏</view>
   </view>
-  <view class="bbbug_panel_item" bindtap="mainMenuClicked" mark:title="在线">
-    <view class="bbbug_panel_icon"><i class="iconfont icon-icon_group"></i></view>
-    <view class="bbbug_panel_title">在线</view>
-  </view>
-  <!-- <view wx:else class="bbbug_panel_item" bindtap="mainMenuClicked" mark:title="TA的歌单">
-    <view class="bbbug_panel_icon"><i class="iconfont icon-icon_doc"></i></view>
-    <view class="bbbug_panel_title">TA的歌单</view>
-  </view> -->
   <view  class="bbbug_panel_item" bindtap="mainMenuClicked" mark:title="资料">
     <view class="bbbug_panel_icon"><i class="iconfont icon-icon_compile"></i></view>
     <view class="bbbug_panel_title">资料</view>

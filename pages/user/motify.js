@@ -36,61 +36,59 @@ Component({
         }
       })
     },
-    chooseImage() {
-      let menu = ['查看大图', '上传头像']
-      wx.showActionSheet({
-        itemList: menu,
-        success: (res) => {
-          switch (menu[res.tapIndex]) {
-            case '查看大图':
-              if (this.data.userInfo) {
-                wx.previewImage({
-                  current: this.data.userInfo.user_head,
-                  urls: [this.data.userInfo.user_head]
-                })
-              }
-              break
-            case '上传头像':
-              wx.chooseImage({
-                count: 1,
-                sizeType: 'compressed',
-                // sourceType: 'album',
-                success: (res) => {
-                  wx.showLoading({
-                    title: '上传中'
-                  })
-                  const cloudPath = `avatars/${Date.now()}-${Math.random().toString(16).slice(2)}.jpg`
-                  wx.cloud.uploadFile({
-                    cloudPath,
-                    filePath: res.tempFilePaths[0]
-                  }).then((uploadResult) => {
-                    wx.hideLoading()
-                    this.setData({
-                      user_head: uploadResult.fileID
-                    })
-                  }).catch((error) => {
-                    wx.hideLoading()
-                    console.error('[UploadAvatar]', error)
-                    wx.showToast({
-                      title: '头像上传失败',
-                      icon: 'none'
-                    })
-                  })
-                },
-              })
-              break
-            default:
-          }
-        }
+    chooseWechatAvatar(e) {
+      const avatarUrl = e.detail.avatarUrl
+      if (!avatarUrl) {
+        return
+      }
+      wx.showLoading({
+        title: '上传中',
+        mask: true
+      })
+      const extension = avatarUrl.match(/\.([a-zA-Z0-9]+)(?:\?|$)/)
+      const cloudPath = `avatars/${Date.now()}-${Math.random().toString(16).slice(2)}.${extension ? extension[1] : 'jpg'}`
+      wx.cloud.uploadFile({
+        cloudPath,
+        filePath: avatarUrl
+      }).then((uploadResult) => {
+        wx.hideLoading()
+        this.setData({
+          user_head: uploadResult.fileID
+        })
+      }).catch((error) => {
+        wx.hideLoading()
+        console.error('[UploadAvatar]', error)
+        wx.showToast({
+          title: '微信头像上传失败',
+          icon: 'none'
+        })
       })
     },
     logout() {
-      wx.showToast({
-        title: '云开发身份由微信管理',
-        icon: 'none'
+      wx.showModal({
+        title: '退出登录',
+        content: '退出后需要重新填写资料完成微信登录。',
+        success: (res) => {
+          if (!res.confirm) {
+            return
+          }
+          wx.removeStorageSync('musicAppLoggedIn')
+          app.globalData.userInfo = null
+          const eventChannel = this.getOpenerEventChannel()
+          eventChannel.emit('logoutSuccess')
+          wx.reLaunch({ url: '/pages/index/index' })
+        }
       })
     },
     doSubmit(e) {
+      if (!this.data.user_head) {
+        wx.showModal({
+          title: '请设置头像',
+          content: '请点击头像并授权选择微信头像。',
+          showCancel: false
+        })
+        return
+      }
       let userInfo = e.detail.value
       userInfo.user_head = this.data.user_head
       userInfo.user_sex = this.data.user_sex
@@ -102,21 +100,6 @@ Component({
           eventChannel.emit('myInfoChanged')
           wx.navigateBack()
         }
-      })
-    },
-    syncWechatUserInfo(e) {
-      let wechatUserData = JSON.parse(e.detail.rawData)
-      let userInfo = this.data.userInfo
-      userInfo.user_head = wechatUserData.avatarUrl
-      userInfo.user_sex = (wechatUserData.gender == 1 ? 1 : 0)
-      userInfo.user_name = (wechatUserData.nickName)
-      this.setData({
-        userInfo: userInfo,
-        user_head: wechatUserData.avatarUrl,
-        user_sex: (wechatUserData.gender == 1 ? 1 : 0)
-      })
-      wx.showToast({
-        title: '同步成功',
       })
     },
     getMyInfo() {

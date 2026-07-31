@@ -168,11 +168,6 @@ page {
     border-top: 1px solid #444 !important;
   }
 
-  .passwordForm {
-    background-color: #222 !important;
-    z-index: 21 !important;
-  }
-
   movable-view {
     box-shadow: 0px 0px 10px rgba(255, 255, 255, 0.5) !important;
   }

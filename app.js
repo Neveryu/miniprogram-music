@@ -11,6 +11,7 @@ App({
     atUserInfo: false,
   },
   systemInfo: null,
+  avatarPromptVisible: false,
   request,
   onLaunch() {
     checkMiniprogramVersion()
@@ -40,21 +41,18 @@ App({
     })
   },
   alertChangeInfo() {
-    let infoChanged = wx.getStorageSync('userInfoChanged') || false
-    if (!infoChanged && this.globalData.userInfo && !this.globalData.userInfo.profile_completed) {
-      console.log('app: 如果你是登陆用户(user_id>0)，且没有完善资料，那么就引导完善一下资料')
+    if (this.globalData.userInfo && !this.globalData.userInfo.user_head && !this.avatarPromptVisible) {
+      this.avatarPromptVisible = true
       wx.showModal({
-        confirmText: '完善资料',
-        cancelText: '不再提示',
-        title: '修改资料',
-        content: '快去完善资料展示自己的个性主页吧',
-        success: function (res) {
-          wx.setStorageSync('userInfoChanged', new Date().valueOf())
-          if (res.confirm) {
-            wx.navigateTo({
-              url: '../user/motify'
-            })
-          }
+        confirmText: '设置头像',
+        title: '需要微信头像',
+        content: '请授权选择微信头像后继续使用。',
+        showCancel: false,
+        complete: () => {
+          this.avatarPromptVisible = false
+          wx.navigateTo({
+            url: '/pages/user/motify'
+          })
         }
       })
     }

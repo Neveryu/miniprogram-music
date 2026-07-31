@@ -1,14 +1,29 @@
 <view class="page" xmlns:wx="http://www.w3.org/1999/xhtml">
   <view class="page__bd" wx:if="{{bbbug}}">
     <view class="app_title">Music For U</view>
-    <view class="app_desc">使用微信身份登录后加入 Music For U</view>
-    <view class="login-card">
-      <view class="wechat-login-icon"><i class="iconfont icon-wechat"></i></view>
-      <view class="login-title">微信快捷登录</view>
-      <view class="login-desc">登录后可以参与聊天、点歌和房间互动</view>
-      <button class="weui-btn wechat-login-button" type="primary" bindtap="wxLogin" loading="{{isLoggingIn}}" disabled="{{isLoggingIn}}">
-        {{isLoggingIn ? '登录中...' : '微信登录'}}
+    <view class="app_desc">完善微信资料后加入 Music For U</view>
+    <form class="login-card" bindsubmit="wxLogin">
+      <button class="avatar-button" open-type="chooseAvatar" bindchooseavatar="chooseWechatAvatar">
+        <image src="{{userHead||'/res/image/nohead.jpg'}}" mode="aspectFill"></image>
       </button>
-    </view>
+      <view class="avatar-tip">点击选择微信头像</view>
+      <view class="weui-cells">
+        <view class="weui-cell weui-cell_input">
+          <view class="weui-cell__hd"><view class="weui-label">昵称</view></view>
+          <view class="weui-cell__bd"><input class="weui-input" type="nickname" name="user_name" placeholder="请选择或输入昵称" /></view>
+        </view>
+        <view class="weui-cell weui-cell_input" bindtap="changeSex">
+          <view class="weui-cell__hd"><view class="weui-label">性别</view></view>
+          <view class="weui-cell__bd"><input class="weui-input" value="{{userSex<0?'请选择性别':sexList[userSex]}}" disabled="true" /></view>
+        </view>
+        <view class="weui-cell weui-cell_input">
+          <view class="weui-cell__hd"><view class="weui-label">签名</view></view>
+          <view class="weui-cell__bd"><input class="weui-input" name="user_remark" maxlength="100" placeholder="请输入个性签名" /></view>
+        </view>
+      </view>
+      <button class="weui-btn wechat-login-button" type="primary" form-type="submit" loading="{{isLoggingIn}}" disabled="{{isLoggingIn}}">
+        {{isLoggingIn ? '登录中...' : '完成微信登录'}}
+      </button>
+    </form>
   </view>
 </view>

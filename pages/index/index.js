@@ -2,7 +2,6 @@ import config from '../../config/index.js'
 import api from '../../config/api.js'
 const app = getApp()
 var WechatSI = requirePlugin('WechatSI')
-let WechatRecord = WechatSI.getRecordRecognitionManager()
 Page({
   data: {
     // 值应为某子元素id（id不能以数字开头）。设置哪个方向可滚动，则在哪个方向滚动到该元素
@@ -14,7 +13,6 @@ Page({
     simplePlayer: true,
     musicLrcObj: [],
     lrcString: '',
-    showPasswordForm: false,
     isScrollEnabled: true,
     emojiList: [],
     imageList: [],
@@ -30,13 +28,18 @@ Page({
     bottomHeight: 0,
     default_room: 1,
     room_id: 1,
-    room_password: '',
     bbbug_view_id: '',
     bbbug_view_scroll: '',
     messageWatcher: null,
     roomWatcher: null,
     bgPlayer: null,
     audioPlayer: null,
+    voicePlayer: null,
+    recorderManager: null,
+    voiceMode: false,
+    isRecording: false,
+    discardVoiceResult: false,
+    voicePlayingId: '',
     userInfo: null,
     roomInfo: null,
     songInfo: null,
@@ -156,8 +159,22 @@ Page({
     this.data.audioPlayer = wx.createInnerAudioContext({
       useWebAudioImplement: true
     })
-    // 初始化，获取当前登录用户的信息
-    this.getMyInfo()
+    this.data.voicePlayer = wx.createInnerAudioContext()
+    this.data.voicePlayer.onEnded(() => this.setData({ voicePlayingId: '' }))
+    this.data.voicePlayer.onStop(() => this.setData({ voicePlayingId: '' }))
+    this.data.voicePlayer.onError(() => {
+      this.setData({ voicePlayingId: '' })
+      wx.showToast({ title: '语音播放失败', icon: 'none' })
+    })
+    this.data.recorderManager = wx.getRecorderManager()
+    this.data.recorderManager.onStop((result) => this.uploadVoice(result))
+    this.data.recorderManager.onError(() => {
+      this.setData({ isRecording: false })
+      wx.showToast({ title: '录音失败，请检查麦克风权限', icon: 'none' })
+    })
+    if (wx.getStorageSync('musicAppLoggedIn')) {
+      this.getMyInfo()
+    }
   },
   setSimplePlayer() {
     wx.vibrateShort()
@@ -184,6 +201,11 @@ Page({
         }
         app.alertChangeInfo()
       },
+      login: () => {
+        wx.removeStorageSync('musicAppLoggedIn')
+        app.globalData.userInfo = null
+        this.setData({ userInfo: null })
+      },
       error(res) {
         wx.hideNavigationBarLoading()
       }
@@ -194,14 +216,10 @@ Page({
    */
   getRoomInfo() {
     wx.showNavigationBarLoading()
-    this.setData({
-      showPasswordForm: false
-    })
     app.request({
       url: api.getRoomInfo,
       data: {
-        room_id: this.data.room_id,
-        room_password: this.data.room_password
+        room_id: this.data.room_id
       },
       success: (res) => {
         wx.hideNavigationBarLoading()
@@ -220,13 +238,6 @@ Page({
       },
       error: (res) => {
         wx.hideNavigationBarLoading()
-        if (res.code == 302) {
-          this.setData({
-            showPasswordForm: true,
-            room_password: ''
-          })
-          return true
-        }
       }
     })
   },
@@ -283,21 +294,6 @@ Page({
     console.log('长链接发送过来的数据：', msg)
     let msgString = ''
     switch (msg.type) {
-      case 'touch':
-        msgString = decodeURIComponent(msg.user.user_name) + ' 摸了摸 ' + decodeURIComponent(msg.at.user_name) + msg.at.user_touchtip
-        this.addSystemMessage(msgString)
-        if (msg.at) {
-          if (msg.at.user_id == this.data.userInfo.user_id) {
-            wx.vibrateLong()
-          }
-        }
-        break
-      case 'join':
-        msg.content = msg.content
-        msg.type = 'system'
-        this.addMessageToList(msg)
-        this.say(msg.content)
-        break
       case 'text':
       case 'img':
       case 'link':
@@ -351,21 +347,6 @@ Page({
         this.addSystemMessage(msgString)
         this.say(msgString)
         break
-      case 'removeban':
-        msgString = decodeURIComponent(msg.user.user_name) + ' 将 ' + decodeURIComponent(msg.ban.user_name) + ' 解禁'
-        this.addSystemMessage(msgString)
-        this.say(msgString)
-        break
-      case 'shutdown':
-        msgString = decodeURIComponent(msg.user.user_name) + ' 禁止了用户 ' + decodeURIComponent(msg.ban.user_name) + ' 发言'
-        this.addSystemMessage(msgString)
-        this.say(msgString)
-        break
-      case 'songdown':
-        msgString = decodeURIComponent(msg.user.user_name) + ' 禁止了用户 ' + decodeURIComponent(msg.ban.user_name) + ' 点歌'
-        this.addSystemMessage(msgString)
-        this.say(msgString)
-        break
       case 'back':
         for (let i = 0; i < this.data.messageList.length; i++) {
           if (this.data.messageList[i].message_id == msg.message_id) {
@@ -387,13 +368,6 @@ Page({
         break
       case 'all':
         this.addSystemMessage(msg.content)
-        break
-      case 'online':
-        if (this.data.isThisShow) {
-          wx.setNavigationBarTitle({
-            title: this.data.roomInfo.room_name + '(' + msg.data.length + ')'
-          })
-        }
         break
       case 'roomUpdate':
         this.getRoomInfo()
@@ -547,7 +521,7 @@ Page({
               } catch (e) {
                 _obj.content = (_obj.content)
               }
-              _obj.isAtAll = decodeURIComponent(_obj.content).indexOf('@全体') == 0 && (_obj.user.user_id == this.data.roomInfo.room_user || _obj.user.user_admin) ? true : false
+              _obj.isAtAll = decodeURIComponent(_obj.content).indexOf('@全体') == 0 && _obj.user.user_id == this.data.roomInfo.room_user ? true : false
             }
             messageList.unshift(_obj)
           }
@@ -574,6 +548,17 @@ Page({
       messageSendButton: config.messageButtonTitleSend
     })
     wx.hideKeyboard()
+  },
+  footerTapedToFocus() {
+    if (!this.data.voiceMode) {
+      this.setData({ messageFocus: true })
+    }
+  },
+  messageFocused() {
+    this.setData({ messageFocus: true })
+  },
+  clearAtInfo() {
+    this.setData({ atMessageObj: false })
   },
   showOrHideEmojiBox() {
     if (this.data.isEmojiBoxShow) {
@@ -637,27 +622,9 @@ Page({
           url: '../song/playing?bbbug=' + app.globalData.systemVersion,
         })
         break
-      case '歌单':
+      case '收藏':
         wx.navigateTo({
           url: '../song/my?bbbug=' + app.globalData.systemVersion
-        })
-        break
-      case 'TA的歌单':
-        wx.navigateTo({
-          url: `../song/my?bbbug=${app.globalData.systemVersion}`
-        })
-        break
-      case '在线':
-        wx.navigateTo({
-          url: '../user/online?bbbug=' + app.globalData.systemVersion,
-          events: {
-            doAtUser: (userInfo) => {
-              this.longTapToAtUser(userInfo)
-            },
-            doTouchUser: (user_id) => {
-              this.doTouchUser(user_id)
-            }
-          }
         })
         break
       case '注销':
@@ -710,8 +677,7 @@ Page({
     }
     let msg = e.mark.msg
     let menuList = ['引用消息']
-    if (msg.user.user_id == this.data.userInfo.user_id || this.data.userInfo.user_admin || this.data.userInfo.user_id == this.data.roomInfo.room_user) {
-      //我发的消息 我是管理员 我是房主 给撤回按钮
+    if (msg.user.user_id == this.data.userInfo.user_id || this.data.userInfo.user_id == this.data.roomInfo.room_user) {
       menuList.push('撤回消息')
     }
     switch (msg.type) {
@@ -805,7 +771,7 @@ Page({
   },
   // 点击圆形播放器
   showSongMenu() {
-    let menu = ['收藏到歌单', '切歌']
+    let menu = ['收藏歌曲', '切歌']
     if (this.data.isMusicPlaying) {
       menu.push('关闭音乐')
     } else {
@@ -829,7 +795,7 @@ Page({
               this.playMusic(this.data.songInfo)
             }
             break
-          case '收藏到歌单':
+          case '收藏歌曲':
             app.request({
               url: api.addMySong,
               data: {
@@ -846,11 +812,12 @@ Page({
             })
             break
           case '切歌':
-            let type = 'pass'
-            if (this.data.roomInfo.room_user == this.data.userInfo.user_id || this.data.userInfo.user_admin || this.data.songInfo.user.user_id == this.data.userInfo.user_id) {
-              type = 'pass'
-            } else {
-              type = 'vote'
+            if (this.data.roomInfo.room_user != this.data.userInfo.user_id && this.data.songInfo.user.user_id != this.data.userInfo.user_id) {
+              wx.showToast({
+                title: '只有房主或点歌人可以切歌',
+                icon: 'none'
+              })
+              return
             }
             app.request({
               url: 'song/pass',
@@ -858,36 +825,16 @@ Page({
                 room_id: app.globalData.roomInfo.room_id,
                 mid: this.data.songInfo.song.mid,
               },
-              loading: type == 'pass' ? '切歌中' : '投票中',
-              success: (res) => {
-                if (type == 'pass') {
-                  wx.showToast({
-                    title: '切歌成功'
-                  })
-                } else {
-                  wx.showModal({
-                    title: '投票成功',
-                    content: res.msg,
-                    showCancel: false,
-                  })
-                }
+              loading: '切歌中',
+              success: () => {
+                wx.showToast({
+                  title: '切歌成功'
+                })
               }
             })
             break
           default:
         }
-      }
-    })
-  },
-  doTouchUser(user_id) {
-    app.request({
-      url: 'message/touch',
-      data: {
-        at: user_id,
-        room_id: this.data.room_id
-      },
-      success: () => {
-        wx.vibrateLong()
       }
     })
   },
@@ -917,14 +864,8 @@ Page({
     return str
   },
   sendEmoji(e) {
-    let url = false
-    if (e.mark.url.indexOf('/res/Emojis/') > -1) {
-      url = e.mark.url
-    } else {
-      url = e.mark.url
-    }
-    url = this.getStaticUrl(url)
-    console.log(url, '----')
+    const url = this.getStaticUrl(e.mark.url)
+    const reply = this.data.atMessageObj && this.data.atMessageObj.message ? this.data.atMessageObj.message : null
     app.request({
       url: 'message/send',
       data: {
@@ -933,8 +874,10 @@ Page({
         type: 'img',
         msg: url,
         resource: url,
+        reply_to: reply ? reply.message_id : ''
       },
-      success: (res) => {
+      success: () => {
+        this.setData({ atMessageObj: false })
         this.hideAllDialog()
       }
     })
@@ -984,6 +927,10 @@ Page({
     })
   },
   longPressPassTheSong() {
+    if (this.data.roomInfo.room_user != this.data.userInfo.user_id && this.data.songInfo.user.user_id != this.data.userInfo.user_id) {
+      this.say('只有房主或点歌人可以切歌')
+      return
+    }
     app.request({
       url: 'song/pass',
       data: {
@@ -991,9 +938,6 @@ Page({
         mid: this.data.songInfo.song.mid
       },
       success: (res) => {
-        if (res.msg != '切歌成功') {
-          res.msg = '已发起切歌投票'
-        }
         this.say(res.msg)
       },
       error: () => {
@@ -1021,7 +965,7 @@ Page({
       message: ''
     })
     let message_send = message
-    if (this.data.atMessageObj) {
+    if (this.data.atMessageObj && !this.data.atMessageObj.message) {
       message = '@' + decodeURIComponent(this.data.atMessageObj.user_name + ' ' + message,
         '')
     }
@@ -1048,7 +992,8 @@ Page({
         where: 'channel',
         to: this.data.room_id,
         msg: encodeURIComponent(message_send),
-        at: atUserInfo
+        at: atUserInfo && !atUserInfo.message ? atUserInfo : false,
+        reply_to: atUserInfo && atUserInfo.message ? atUserInfo.message.message_id : ''
       },
       success: (res) => {
         this.setData({
@@ -1072,6 +1017,7 @@ Page({
     })
   },
   chooseImage() {
+    const reply = this.data.atMessageObj && this.data.atMessageObj.message ? this.data.atMessageObj.message : null
     wx.chooseImage({
       count: 1,
       sizeType: 'compressed',
@@ -1094,8 +1040,12 @@ Page({
               type: 'img',
               msg: uploadResult.fileID,
               resource: uploadResult.fileID,
+              reply_to: reply ? reply.message_id : ''
             },
-            success: () => this.hideAllDialog()
+            success: () => {
+              this.setData({ atMessageObj: false })
+              this.hideAllDialog()
+            }
           })
         }).catch((error) => {
           wx.hideLoading()
@@ -1107,6 +1057,75 @@ Page({
         })
       }
     })
+  },
+  toggleVoiceMode() {
+    this.setData({
+      voiceMode: !this.data.voiceMode,
+      messageFocus: false,
+      isEmojiBoxShow: false,
+      isPanelShow: false
+    })
+  },
+  startVoiceRecord() {
+    if (this.data.isRecording) {
+      return
+    }
+    this.setData({ isRecording: true, discardVoiceResult: false })
+    this.data.recorderManager.start({
+      duration: 60000,
+      sampleRate: 16000,
+      numberOfChannels: 1,
+      encodeBitRate: 48000,
+      format: 'mp3'
+    })
+  },
+  stopVoiceRecord() {
+    if (!this.data.isRecording) {
+      return
+    }
+    this.setData({ isRecording: false })
+    this.data.recorderManager.stop()
+  },
+  uploadVoice(result) {
+    if (this.data.discardVoiceResult) {
+      return
+    }
+    if (!result.tempFilePath || result.duration < 1000) {
+      wx.showToast({ title: '说话时间太短', icon: 'none' })
+      return
+    }
+    wx.showLoading({ title: '发送中' })
+    const cloudPath = `messages/voice/${Date.now()}-${Math.random().toString(16).slice(2)}.mp3`
+    wx.cloud.uploadFile({ cloudPath, filePath: result.tempFilePath }).then((uploadResult) => {
+      wx.hideLoading()
+      const reply = this.data.atMessageObj && this.data.atMessageObj.message ? this.data.atMessageObj.message : null
+      app.request({
+        url: 'message/send',
+        data: {
+          type: 'voice',
+          msg: uploadResult.fileID,
+          resource: uploadResult.fileID,
+          duration: result.duration,
+          reply_to: reply ? reply.message_id : ''
+        },
+        success: () => this.setData({ atMessageObj: false })
+      })
+    }).catch((error) => {
+      wx.hideLoading()
+      console.error('[UploadVoice]', error)
+      wx.showToast({ title: '语音上传失败', icon: 'none' })
+    })
+  },
+  playVoice(e) {
+    const msg = e.mark.msg
+    if (this.data.voicePlayingId === msg.message_id) {
+      this.data.voicePlayer.stop()
+      return
+    }
+    this.data.voicePlayer.stop()
+    this.data.voicePlayer.src = msg.resource || msg.content
+    this.data.voicePlayer.play()
+    this.setData({ voicePlayingId: msg.message_id })
   },
   backCar() {
     this.setData({
@@ -1120,5 +1139,10 @@ Page({
   },
   onUnload() {
     this.closeCloudWatchers()
+    if (this.data.isRecording && this.data.recorderManager) {
+      this.data.discardVoiceResult = true
+      this.data.recorderManager.stop()
+    }
+    this.data.voicePlayer && this.data.voicePlayer.destroy()
   }
 })

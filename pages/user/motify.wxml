@@ -2,9 +2,10 @@
   <view class="page__bd">
     <form bindsubmit="doSubmit" bindreset="formReset" wx:if="{{userInfo}}">
       <view class="user_head">
-        <image class="weui-media-box__thumb" bindtap="chooseImage"
-          src="{{user_head||'https://bbbug.com/images/nohead.jpg'}}">
-        </image>
+        <button class="avatar_button" open-type="chooseAvatar" bindchooseavatar="chooseWechatAvatar">
+          <image class="weui-media-box__thumb" src="{{user_head||'/res/image/nohead.jpg'}}" mode="aspectFill"></image>
+        </button>
+        <view class="avatar_hint">点击使用微信头像</view>
         <view>ID: {{userInfo.user_id}}</view>
       </view>
       <view class="weui-cells weui-cells_after-title">
@@ -13,7 +14,7 @@
             <view class="weui-label">昵称</view>
           </view>
           <view class="weui-cell__bd">
-            <input class="weui-input" placeholder="你牛批的名字" type="text" name="user_name"
+            <input class="weui-input" placeholder="请选择或输入昵称" type="nickname" name="user_name"
               value="{{userInfo.user_name}}" />
           </view>
         </view>
@@ -35,31 +36,11 @@
               disabled="disabled" readonly="readonly" bindtap="changeSex" />
           </view>
         </view>
-        <view class="weui-cell weui-cell_input">
-          <view class="weui-cell__hd">
-            <view class="weui-label">摸摸</view>
-          </view>
-          <view class="weui-cell__bd">
-            <input class="weui-input" placeholder="你的摸一摸文案" type="text" name="user_touchtip"
-              value="{{userInfo.user_touchtip}}" />
-          </view>
-        </view>
-        <view class="weui-cell weui-cell_input">
-          <view class="weui-cell__hd">
-            <view class="weui-label">密码</view>
-          </view>
-          <view class="weui-cell__bd">
-            <input class="weui-input" placeholder="你的登录密码" password="true" name="user_password"
-              value="{{userInfo.user_password}}" />
-          </view>
-        </view>
       </view>
       <view class="weui-btn-area">
         <button form-type="submit" class="weui-btn" type="primary">保存资料</button>
       </view>
       <view class="footer">
-        <!-- <view class="syncWechatUserInfo"><button bindgetuserinfo="syncWechatUserInfo" open-type="getUserInfo"><i
-              class="iconfont icon-wechat-fill"></i>同步资料</button></view> -->
         <view class="logout" bindtap="logout"><i class="iconfont icon-poweroff"></i>退出登录</view>
       </view>
     </form>

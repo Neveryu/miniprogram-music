@@ -4,11 +4,6 @@
       "name": "openid_unique",
       "unique": true,
       "fields": [{ "field": "_openid", "direction": "asc" }]
-    },
-    {
-      "name": "last_active",
-      "unique": false,
-      "fields": [{ "field": "last_active_at", "direction": "desc" }]
     }
   ],
   "rooms": [

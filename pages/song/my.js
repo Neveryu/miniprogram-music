@@ -26,7 +26,7 @@ Component({
         bbbug: true
       })
       wx.setNavigationBarTitle({
-        title: '我的歌单'
+        title: '歌曲收藏'
       })
       this.getSongList()
     },

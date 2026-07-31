@@ -65,3 +65,11 @@ module.exports.friendlyTime = function (time) {
   //   return parseInt((now - time) / 86400 / 365) + '年前'
   // }
 }
+
+module.exports.voiceDuration = function (duration) {
+  var seconds = parseInt((parseInt(duration || 0) + 500) / 1000);
+  if (seconds < 1) {
+    seconds = 1;
+  }
+  return seconds + '"';
+};

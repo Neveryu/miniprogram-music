@@ -3,7 +3,6 @@ const cloud = require('wx-server-sdk')
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV })
 
 const db = cloud.database()
-const command = db.command
 const DEFAULT_ROOM_ID = 1
 const DEFAULT_ROOM_NAME = 'Music For U'
 const MUSIC_API_URL = 'https://www.hanxin.vip/api/music'
@@ -45,40 +44,49 @@ const getUserByOpenid = async (openid) => {
   return result.data[0] || null
 }
 
-const createUser = async (openid) => {
+const saveLoginUser = async (openid, payload) => {
+  const userName = validateUserName(payload.user_name)
+  const userHead = String(payload.user_head || '')
+  if (!/^cloud:\/\//i.test(userHead)) {
+    return failure('请授权选择并上传微信头像', 422)
+  }
+  if (![0, 1].includes(Number(payload.user_sex))) {
+    return failure('请选择性别', 422)
+  }
+  const values = {
+    user_name: userName,
+    user_head: userHead,
+    user_sex: Number(payload.user_sex),
+    user_remark: String(payload.user_remark || '').trim().slice(0, 100),
+    profile_completed: true,
+    updated_at: db.serverDate()
+  }
+  const existing = await getUserByOpenid(openid)
+  if (existing) {
+    await db.collection('users').doc(existing._id).update({ data: values })
+    return success(toClientUser({ ...existing, ...values }), '登录成功')
+  }
   const created = await db.collection('users').add({
     data: {
       _openid: openid,
-      user_name: '微信用户',
-      user_head: '',
-      user_sex: 0,
-      user_admin: false,
-      user_guest: false,
-      profile_completed: false,
+      ...values,
       created_at: db.serverDate(),
-      updated_at: db.serverDate()
     }
   })
-  return {
+  return success(toClientUser({
     _id: created._id,
     _openid: openid,
-    user_name: '微信用户',
-    user_head: '',
-    user_sex: 0,
-    user_admin: false,
-    user_guest: false,
-    profile_completed: false
-  }
-}
-
-const ensureUser = async (openid) => {
-  const user = await getUserByOpenid(openid)
-  return user || createUser(openid)
+    ...values
+  }), '登录成功')
 }
 
 const toClientUser = (user) => ({
-  ...user,
   user_id: user._id,
+  user_name: user.user_name,
+  user_head: user.user_head,
+  user_sex: user.user_sex,
+  user_remark: user.user_remark || '',
+  profile_completed: Boolean(user.profile_completed),
   myRoom: false
 })
 
@@ -101,8 +109,16 @@ const ensureDefaultRoom = async (user) => {
     created_at: db.serverDate(),
     updated_at: db.serverDate()
   }
-  const created = await db.collection('rooms').add({ data: room })
-  return { ...room, _id: created._id }
+  try {
+    const created = await db.collection('rooms').add({ data: room })
+    return { ...room, _id: created._id }
+  } catch (error) {
+    const existing = await db.collection('rooms').where({ room_id: DEFAULT_ROOM_ID }).limit(1).get()
+    if (existing.data.length) {
+      return existing.data[0]
+    }
+    throw error
+  }
 }
 
 const getDefaultRoom = async (user) => ensureDefaultRoom(user)
@@ -115,16 +131,35 @@ const normalizeMessage = (doc) => ({
 })
 
 const sendMessage = async (payload, user) => {
-  const type = ['text', 'img', 'system'].includes(payload.type) ? payload.type : 'text'
+  const type = ['text', 'img', 'voice'].includes(payload.type) ? payload.type : 'text'
   const content = String(payload.msg || '').trim()
   if (!content || content.length > 1000) {
     return failure('消息内容长度应为 1 到 1000 个字符', 422)
+  }
+  const isBundledEmoji = type === 'img' && /^\/res\/Emojis\//.test(content)
+  if ((type === 'img' || type === 'voice') && !/^cloud:\/\//i.test(content) && !isBundledEmoji) {
+    return failure('消息文件必须使用云存储地址', 422)
+  }
+  const duration = type === 'voice' ? Math.min(Math.max(Number(payload.duration) || 0, 1), 60000) : 0
+  let reply = null
+  if (payload.reply_to) {
+    const replied = await db.collection('messages').doc(String(payload.reply_to)).get()
+    if (replied.data && replied.data.room_id === DEFAULT_ROOM_ID) {
+      const repliedPayload = replied.data.payload || {}
+      reply = {
+        message_id: replied.data._id,
+        type: repliedPayload.type,
+        content: repliedPayload.type === 'text' ? String(repliedPayload.content || '').slice(0, 200) : '',
+        user_name: String(repliedPayload.user && repliedPayload.user.user_name || '')
+      }
+    }
   }
   const message = {
     type,
     content,
     resource: String(payload.resource || content),
-    at: payload.at || false,
+    duration,
+    reply,
     user: toClientUser(user),
     room_id: DEFAULT_ROOM_ID,
     message_time: Math.floor(Date.now() / 1000)
@@ -167,7 +202,7 @@ const recallMessage = async (payload, user) => {
   const result = await db.collection('messages').doc(payload.message_id).get()
   const message = result.data
   const room = await getDefaultRoom(user)
-  if (message._openid !== user._openid && room.room_user !== user._id && !user.user_admin) {
+  if (message._openid !== user._openid && room.room_user !== user._id) {
     return failure('无权撤回该消息', 403)
   }
   await db.collection('messages').doc(payload.message_id).remove()
@@ -175,31 +210,19 @@ const recallMessage = async (payload, user) => {
 }
 
 const updateProfile = async (payload, user) => {
+  if (!payload.user_head && !user.user_head) {
+    return failure('请先授权选择微信头像', 422)
+  }
   const values = {
     user_name: validateUserName(payload.user_name || user.user_name),
     user_head: payload.user_head || user.user_head,
     user_sex: Number(payload.user_sex) || 0,
-    profile_completed: Boolean(payload.user_name),
+    user_remark: String(payload.user_remark || '').trim().slice(0, 100),
+    profile_completed: Boolean(payload.user_name && (payload.user_head || user.user_head)),
     updated_at: db.serverDate()
   }
   await db.collection('users').doc(user._id).update({ data: values })
   return success(toClientUser({ ...user, ...values }), '资料已更新')
-}
-
-const onlineUsers = async () => {
-  const since = new Date(Date.now() - 5 * 60 * 1000)
-  const result = await db.collection('users').where({ last_active_at: command.gte(since) }).limit(100).get()
-  return success(result.data.map(toClientUser))
-}
-
-const touchUser = async (payload, user) => {
-  if (!payload.at) {
-    return failure('缺少用户标识', 422)
-  }
-  const target = await db.collection('users').doc(payload.at).get()
-  const targetUser = toClientUser(target.data)
-  const content = `${decodeURIComponent(user.user_name)} 摸了摸 ${decodeURIComponent(targetUser.user_name)}`
-  return sendMessage({ type: 'system', msg: content }, user)
 }
 
 const addFavorite = async (payload, user) => {
@@ -234,6 +257,10 @@ const queueList = async () => {
 }
 
 const addSong = async (payload, user, playNow = false) => {
+  const room = await getDefaultRoom(user)
+  if (playNow && room.room_user !== user._id) {
+    return failure('只有房主可以立即播放歌曲', 403)
+  }
   const song = validateSong(payload.song || payload)
   const queueItem = {
     room_id: DEFAULT_ROOM_ID,
@@ -254,8 +281,18 @@ const addSong = async (payload, user, playNow = false) => {
   return success(null, playNow ? '播放成功' : '点歌成功')
 }
 
-const passSong = async (user) => {
+const passSong = async (payload, user) => {
   const room = await getDefaultRoom(user)
+  if (!room.current_song || !room.current_song.song) {
+    return failure('当前没有正在播放的歌曲', 422)
+  }
+  if (payload.mid && String(payload.mid) !== String(room.current_song.song.mid)) {
+    return failure('当前播放歌曲已发生变化', 409)
+  }
+  const requesterId = room.current_song.user && room.current_song.user.user_id
+  if (room.room_user !== user._id && requesterId !== user._id) {
+    return failure('只有房主或点歌人可以切歌', 403)
+  }
   const queue = await db.collection('play_queue').where({ room_id: DEFAULT_ROOM_ID }).orderBy('sort_time', 'asc').limit(2).get()
   if (room.current_song && room.current_song._id) {
     await db.collection('play_queue').doc(room.current_song._id).remove().catch(() => null)
@@ -270,23 +307,32 @@ const passSong = async (user) => {
   return success(null, '切歌成功')
 }
 
-const removeQueueSong = async (payload) => {
+const removeQueueSong = async (payload, user) => {
   if (!payload.mid) {
     return failure('缺少歌曲标识', 422)
   }
   const result = await db.collection('play_queue').where({ room_id: DEFAULT_ROOM_ID, 'song.mid': payload.mid }).limit(1).get()
   if (result.data.length) {
+    const room = await getDefaultRoom(user)
+    const requesterId = result.data[0].user && result.data[0].user.user_id
+    if (room.room_user !== user._id && requesterId !== user._id) {
+      return failure('无权移除该歌曲', 403)
+    }
     await db.collection('play_queue').doc(result.data[0]._id).remove()
   }
   return success(null, '移除成功')
 }
 
-const pushQueueSong = async (payload) => {
+const pushQueueSong = async (payload, user) => {
   if (!payload.mid) {
     return failure('缺少歌曲标识', 422)
   }
   const result = await db.collection('play_queue').where({ room_id: DEFAULT_ROOM_ID, 'song.mid': payload.mid }).limit(1).get()
   if (result.data.length) {
+    const room = await getDefaultRoom(user)
+    if (room.room_user !== user._id) {
+      return failure('只有房主可以置顶歌曲', 403)
+    }
     await db.collection('play_queue').doc(result.data[0]._id).update({ data: { sort_time: 0 } })
   }
   return success(null, '置顶成功')
@@ -300,19 +346,16 @@ const searchMusic = async (payload) => {
 }
 
 const handlers = {
-  'weapp/wxAppLogin': async (payload, user) => success(toClientUser(user), '登录成功'),
   'user/getmyinfo': async (payload, user) => success(toClientUser(user)),
   'user/updateMyInfo': updateProfile,
-  'user/online': onlineUsers,
   'room/getRoomInfo': async (payload, user) => success(await getDefaultRoom(user)),
   'app/getRealtimeState': getRealtimeState,
   'message/getMessageList': getMessageList,
   'message/send': sendMessage,
   'message/back': recallMessage,
-  'message/touch': touchUser,
   'message/clear': async (payload, user) => {
     const room = await getDefaultRoom(user)
-    if (room.room_user !== user._id && !user.user_admin) {
+    if (room.room_user !== user._id) {
       return failure('无权清空消息', 403)
     }
     await db.collection('messages').where({ room_id: DEFAULT_ROOM_ID }).remove()
@@ -327,7 +370,7 @@ const handlers = {
   'song/deleteMySong': deleteFavorite,
   'song/remove': removeQueueSong,
   'song/push': pushQueueSong,
-  'song/pass': (payload, user) => passSong(user),
+  'song/pass': passSong,
   'song/getLrc': async (payload) => success(payload.lrc || []),
   'attach/search': async () => success([])
 }
@@ -335,8 +378,13 @@ const handlers = {
 exports.main = async (event) => {
   try {
     const openid = getOpenid()
-    const user = await ensureUser(openid)
-    await db.collection('users').doc(user._id).update({ data: { last_active_at: db.serverDate() } })
+    if (event.action === 'weapp/wxAppLogin') {
+      return await saveLoginUser(openid, event.payload || {})
+    }
+    const user = await getUserByOpenid(openid)
+    if (!user) {
+      return failure('请先完成微信登录', 401)
+    }
     const handler = handlers[event.action]
     if (!handler) {
       return failure(`暂不支持操作：${event.action}`, 404)

@@ -12,6 +12,41 @@
   text-align: center;
 }
 
+.avatar-button {
+  width: 104px;
+  height: 104px;
+  padding: 0;
+  margin: 0 auto;
+  border-radius: 50%;
+  background: transparent;
+  line-height: 1;
+}
+
+.avatar-button::after {
+  border: none;
+}
+
+.avatar-button image {
+  width: 100px;
+  height: 100px;
+  border: 2px solid rgba(127, 127, 127, 0.2);
+  border-radius: 50%;
+}
+
+.avatar-tip {
+  margin: 10px 0 24px;
+  color: #888;
+  font-size: 13px;
+}
+
+.weui-cells {
+  text-align: left;
+}
+
+.weui-label {
+  width: 56px;
+}
+
 .wechat-login-icon {
   color: #07c160;
   font-size: 56px;

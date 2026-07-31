@@ -5,7 +5,6 @@
     "pages/index/index",
     "pages/user/login",
     "pages/user/motify",
-    "pages/user/online",
     "pages/song/select",
     "pages/song/playing",
     "pages/song/my",
