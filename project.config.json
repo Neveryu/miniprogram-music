@@ -1,7 +1,32 @@
 {
   "description": "项目配置文件",
   "packOptions": {
-    "ignore": [],
+    "ignore": [
+      {
+        "type": "folder",
+        "value": "cloudfunctions"
+      },
+      {
+        "type": "folder",
+        "value": ".git"
+      },
+      {
+        "type": "folder",
+        "value": ".dbg"
+      },
+      {
+        "type": "folder",
+        "value": "docs"
+      },
+      {
+        "type": "file",
+        "value": "option-1-minimal.html"
+      },
+      {
+        "type": "file",
+        "value": "debug-*.md"
+      }
+    ],
     "include": []
   },
   "setting": {

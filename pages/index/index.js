@@ -13,6 +13,7 @@ Page({
     simplePlayer: true,
     musicLrcObj: [],
     lrcString: '',
+    lrcIndex: -1,
     isScrollEnabled: true,
     emojiList: [],
     imageList: [],
@@ -39,10 +40,19 @@ Page({
     voiceMode: false,
     isRecording: false,
     discardVoiceResult: false,
+    autoPassSongId: '',
+    failedSongPassId: '',
+    playerSwitchingUntil: 0,
+    isRefillingQueue: false,
+    refillRequestId: 0,
     voicePlayingId: '',
+    voiceSource: '',
+    voicePlayRequestId: 0,
+    voiceFileCache: {},
     userInfo: null,
     roomInfo: null,
     songInfo: null,
+    playerPicError: false,
     carEventChannel: null
   },
   messageListScrolling(e) {
@@ -73,6 +83,25 @@ Page({
         }
       }
     })
+    // 响应歌词列表变化，同步给驾驶模式页面
+    Object.defineProperty(this.data, 'musicLrcObj', {
+      enumerable: true,
+      get: () => this.data._musicLrcObj,
+      set: (value) => {
+        this.data._musicLrcObj = value
+        this.data.carEventChannel && this.data.carEventChannel.emit('sendLrcList', value || [])
+      }
+    })
+    // 响应当前歌词行变化，同步给驾驶模式页面
+    Object.defineProperty(this.data, 'lrcIndex', {
+      enumerable: true,
+      set: (value) => {
+        if(value !== this.data._lrcIndex) {
+          this.data._lrcIndex = value
+          this.data.carEventChannel && this.data.carEventChannel.emit('sendLrcIndex', value)
+        }
+      }
+    })
     // 初始化一个背景音频管理器；小程序切入后台，如果音频处于播放状态，可以继续播放。但是后台状态不能通过调用API操纵音频的播放状态。
     this.data.bgPlayer = wx.getBackgroundAudioManager()
     // this.data.bottomHeight = app.systemInfo.safeArea.bottom - app.systemInfo.safeArea.height + 40
@@ -94,13 +123,15 @@ Page({
           for (let i = 0; i < this.data.musicLrcObj.length; i++) {
             if (i == this.data.musicLrcObj.length - 1) {
               this.setData({
-                lrcString: this.data.musicLrcObj[i].lineLyric
+                lrcString: this.data.musicLrcObj[i].lineLyric,
+                lrcIndex: i
               })
               return
             } else {
               if (this.data.bgPlayer.currentTime > this.data.musicLrcObj[i].time && this.data.bgPlayer.currentTime < this.data.musicLrcObj[i + 1].time) {
                 this.setData({
-                  lrcString: this.data.musicLrcObj[i].lineLyric
+                  lrcString: this.data.musicLrcObj[i].lineLyric,
+                  lrcIndex: i
                 })
                 return
               }
@@ -109,22 +140,62 @@ Page({
         }
       }
     })
+    this.data.bgPlayer.onEnded(() => {
+      const songInfo = this.data.songInfo
+      if (!songInfo || !songInfo.song || this.data.autoPassSongId === songInfo._id) {
+        return
+      }
+      this.setData({ autoPassSongId: songInfo._id })
+      app.request({
+        url: 'song/ended',
+        data: {
+          queue_id: songInfo._id,
+          mid: songInfo.song.mid,
+          source: songInfo.song.source
+        },
+        success: () => {
+          this.setData({ autoPassSongId: '' })
+          this.refillPlaybackQueue()
+        },
+        error: () => {
+          this.setData({ autoPassSongId: '' })
+          this.refillPlaybackQueue()
+          return true
+        },
+        fail: () => {
+          this.setData({ autoPassSongId: '' })
+          this.refillPlaybackQueue()
+        }
+      })
+    })
+    this.data.bgPlayer.onError((error) => {
+      if (Date.now() < this.data.playerSwitchingUntil) {
+        return
+      }
+      const songInfo = this.data.songInfo
+      if (!songInfo || !songInfo.song) {
+        return
+      }
+      this.autoPassUnavailableSong(songInfo, error)
+    })
     /**
      * 监听用户在系统音乐播放面板点击上一曲事件（仅iOS）
      * 收藏？
      */
     this.data.bgPlayer.onPrev(() => {
-      if (this.data.isCarMode) {
+      if (this.data.isCarMode && this.data.songInfo && this.data.songInfo.song) {
         app.request({
           url: 'song/addMySong',
           data: {
             room_id: app.globalData.roomInfo.room_id,
             mid: this.data.songInfo.song.mid,
+            source: this.data.songInfo.song.source,
             song: this.data.songInfo.song
           },
           loading: '收藏中',
           success: (res) => {
             this.say(res.msg)
+            this.refillPlaybackQueue()
           },
           error: (res) => {
             this.say(res.msg)
@@ -140,14 +211,34 @@ Page({
       if (!this.data.isCarMode) {
         return
       }
+      if (!this.data.songInfo || !this.data.songInfo.song) {
+        app.request({
+          url: 'song/pass',
+          data: {
+            room_id: app.globalData.roomInfo.room_id
+          },
+          success: (res) => {
+            this.say(res.msg)
+            this.refillPlaybackQueue()
+          },
+          error: (res) => {
+            this.say(res.msg)
+            return true
+          }
+        })
+        return
+      }
       app.request({
         url: 'song/pass',
         data: {
           room_id: app.globalData.roomInfo.room_id,
-          mid: this.data.songInfo.song.mid
+          mid: this.data.songInfo.song.mid,
+          source: this.data.songInfo.song.source,
+          queue_id: this.data.songInfo._id
         },
         success: (res) => {
           this.say(res.msg)
+          this.refillPlaybackQueue()
         },
         error() {
           return true
@@ -159,12 +250,18 @@ Page({
     this.data.audioPlayer = wx.createInnerAudioContext({
       useWebAudioImplement: true
     })
+    if (wx.setInnerAudioOption) {
+      wx.setInnerAudioOption({
+        mixWithOther: true,
+        obeyMuteSwitch: false
+      })
+    }
     this.data.voicePlayer = wx.createInnerAudioContext()
-    this.data.voicePlayer.onEnded(() => this.setData({ voicePlayingId: '' }))
-    this.data.voicePlayer.onStop(() => this.setData({ voicePlayingId: '' }))
-    this.data.voicePlayer.onError(() => {
-      this.setData({ voicePlayingId: '' })
-      wx.showToast({ title: '语音播放失败', icon: 'none' })
+    this.data.voicePlayer.onEnded(() => this.setData({ voicePlayingId: '', voiceSource: '' }))
+    this.data.voicePlayer.onError((error) => {
+      console.error('[VoicePlayer]', error, this.data.voiceSource)
+      this.setData({ voicePlayingId: '', voiceSource: '' })
+      wx.showToast({ title: '语音播放失败，请稍后重试', icon: 'none' })
     })
     this.data.recorderManager = wx.getRecorderManager()
     this.data.recorderManager.onStop((result) => this.uploadVoice(result))
@@ -172,9 +269,7 @@ Page({
       this.setData({ isRecording: false })
       wx.showToast({ title: '录音失败，请检查麦克风权限', icon: 'none' })
     })
-    if (wx.getStorageSync('musicAppLoggedIn')) {
-      this.getMyInfo()
-    }
+    this.getMyInfo()
   },
   setSimplePlayer() {
     wx.vibrateShort()
@@ -202,7 +297,7 @@ Page({
         app.alertChangeInfo()
       },
       login: () => {
-        wx.removeStorageSync('musicAppLoggedIn')
+        wx.hideNavigationBarLoading()
         app.globalData.userInfo = null
         this.setData({ userInfo: null })
       },
@@ -228,6 +323,9 @@ Page({
           roomInfo: res.data
         })
         app.globalData.roomInfo = res.data
+        if (res.data.current_song && (!this.data.songInfo || res.data.current_song._id !== this.data.songInfo._id)) {
+          this.playMusic(res.data.current_song)
+        }
         if (this.data.isThisShow) {
           wx.setNavigationBarTitle({
             title: res.data.room_name
@@ -235,11 +333,39 @@ Page({
         }
         this.getMessageList()
         this.watchCloudData()
+        this.refillPlaybackQueue()
       },
       error: (res) => {
         wx.hideNavigationBarLoading()
       }
     })
+  },
+  resolveMessageCloudUrls(messageList) {
+    const fileIds = []
+    messageList.forEach((message) => {
+      if (message.user && message.user.user_head) {
+        fileIds.push(message.user.user_head)
+      }
+      if (message.type === 'img' && message.content) {
+        fileIds.push(message.content)
+      }
+    })
+    return app.resolveCloudFileUrls(fileIds).then((urls) => messageList.map((message) => {
+      const userHead = message.user && message.user.user_head
+      const content = message.type === 'img' && urls[message.content]
+        ? urls[message.content]
+        : message.content
+      if ((!userHead || !urls[userHead]) && content === message.content) {
+        return message
+      }
+      return {
+        ...message,
+        content,
+        user: userHead && urls[userHead]
+          ? { ...message.user, user_head: urls[userHead] }
+          : message.user
+      }
+    }))
   },
   watchCloudData() {
     this.closeCloudWatchers()
@@ -264,8 +390,14 @@ Page({
             content: welcome
           })
         }
-        this.setData({ messageList })
-        this.autoScroll()
+        this.resolveMessageCloudUrls(messageList).then((resolvedMessages) => {
+          this.setData({ messageList: resolvedMessages })
+          this.autoScroll()
+        }).catch((error) => {
+          console.error('[MessageAvatar]', error)
+          this.setData({ messageList })
+          this.autoScroll()
+        })
       },
       onError: (error) => console.error('[MessageWatcher]', error)
     })
@@ -279,6 +411,13 @@ Page({
         app.globalData.roomInfo = room
         if (room.current_song && (!this.data.songInfo || room.current_song._id !== this.data.songInfo._id)) {
           this.playMusic(room.current_song)
+        } else if (!room.current_song && this.data.songInfo) {
+          this.data.bgPlayer.stop()
+          this.setData({
+            songInfo: null,
+            musicLrcObj: [],
+            lrcString: ''
+          })
         }
       },
       onError: (error) => console.error('[RoomWatcher]', error)
@@ -380,6 +519,20 @@ Page({
   // 歌词
   getMusicLrc() {
     const song = this.data.songInfo && this.data.songInfo.song
+    if (!song) {
+      this.setData({
+        musicLrcObj: [],
+        lrcString: ''
+      })
+      return
+    }
+    if (song.source === 'wydt') {
+      this.setData({
+        musicLrcObj: [],
+        lrcString: ''
+      })
+      return
+    }
     if (song && Array.isArray(song.lrc) && song.lrc.length) {
       this.setData({
         musicLrcObj: song.lrc,
@@ -394,21 +547,31 @@ Page({
     app.request({
       url: 'song/getLrc',
       data: {
-        mid: this.data.songInfo.song.mid,
-        lrc: this.data.songInfo.song.lrc || []
+        mid: song.mid,
+        source: song.source,
+        lrc: song.lrc || []
       },
       success: (res) => {
         this.setData({
           musicLrcObj: res.data,
           lrcString: '歌词加载中...'
         })
+      },
+      error: () => {
+        this.setData({
+          musicLrcObj: [],
+          lrcString: ''
+        })
+        return true
       }
     })
   },
   // 播放音乐
   playMusic(msg) {
+    this.data.playerSwitchingUntil = Date.now() + 1800
     this.setData({
-      songInfo: msg
+      songInfo: msg,
+      playerPicError: false
     })
     this.getMusicLrc()
     this.data.carEventChannel && this.data.carEventChannel.emit('sendSongInfo', this.data.songInfo)
@@ -425,25 +588,147 @@ Page({
     this.setData({
       messageList: this.data.messageList
     })
-    if (!msg.song.url) {
-      wx.showToast({
-        title: '歌曲缺少播放地址',
-        icon: 'none'
-      })
+    if (msg.song.source === 'wydt') {
+      this.data.bgPlayer.src = msg.song.url
+      this.data.bgPlayer.title = msg.song.name + ' - ' + msg.song.singer
+      this.data.bgPlayer.singer = '点歌人: ' + decodeURIComponent(msg.user.user_name) + ' ' + this.data.roomInfo.room_name + ' '
+      this.data.bgPlayer.coverImgUrl = msg.song.pic
+      this.data.bgPlayer.webUrl = msg.song.pic
+      this.data.bgPlayer.seek(parseInt(new Date().valueOf() / 1000) - msg.since)
+      if (this.data.isMusicPlaying) {
+        this.addSystemMessage('正在播放 ' + decodeURIComponent(msg.user.user_name) + ' 点的 ' + msg.song.name + '(' + msg.song.singer + ')')
+        this.data.bgPlayer.play()
+      } else {
+        this.data.bgPlayer.stop()
+      }
       return
     }
-    this.data.bgPlayer.src = msg.song.url
-    this.data.bgPlayer.title = msg.song.name + ' - ' + msg.song.singer
-    this.data.bgPlayer.singer = '点歌人: ' + decodeURIComponent(msg.user.user_name) + ' ' + this.data.roomInfo.room_name + ' '
-    this.data.bgPlayer.coverImgUrl = msg.song.pic
-    this.data.bgPlayer.webUrl = msg.song.pic
-    this.data.bgPlayer.seek(parseInt(new Date().valueOf() / 1000) - msg.since)
-    if (this.data.isMusicPlaying) {
-      this.addSystemMessage('正在播放 ' + decodeURIComponent(msg.user.user_name) + ' 点的 ' + msg.song.name + '(' + msg.song.singer + ')')
-      this.data.bgPlayer.play()
-    } else {
-      this.data.bgPlayer.stop()
+    if (!msg.song.url && msg.song.source !== 'tencent') {
+      this.autoPassUnavailableSong(msg)
+      return
     }
+    app.request({
+      url: 'song/getUrl',
+      data: { source: msg.song.source, mid: msg.song.mid, url: msg.song.url },
+      success: (res) => {
+        if (!this.data.songInfo || this.data.songInfo._id !== msg._id) {
+          return
+        }
+        if (!res.data || !/^https:\/\//i.test(String(res.data))) {
+          this.autoPassUnavailableSong(msg)
+          return
+        }
+        this.data.bgPlayer.src = res.data
+        this.data.bgPlayer.title = msg.song.name + ' - ' + msg.song.singer
+        this.data.bgPlayer.singer = '点歌人: ' + decodeURIComponent(msg.user.user_name) + ' ' + this.data.roomInfo.room_name + ' '
+        this.data.bgPlayer.coverImgUrl = msg.song.pic
+        this.data.bgPlayer.webUrl = msg.song.pic
+        this.data.bgPlayer.seek(parseInt(new Date().valueOf() / 1000) - msg.since)
+        if (this.data.isMusicPlaying) {
+          this.addSystemMessage('正在播放 ' + decodeURIComponent(msg.user.user_name) + ' 点的 ' + msg.song.name + '(' + msg.song.singer + ')')
+          this.data.bgPlayer.play()
+        } else {
+          this.data.bgPlayer.stop()
+        }
+      },
+      error: (response) => {
+        const errmsg = response.msg || ''
+        if (/资源不可用|HTTP/.test(errmsg)) {
+          this.autoPassUnavailableSong(msg)
+          return true
+        }
+        if (this.data.songInfo && this.data.songInfo._id === msg._id) {
+          this.data.bgPlayer.stop()
+          this.setData({
+            songInfo: null,
+            musicLrcObj: [],
+            lrcString: ''
+          })
+        }
+        wx.showToast({
+          title: errmsg || '当前歌曲暂时无法播放',
+          icon: 'none'
+        })
+        return true
+      },
+      fail: (error) => {
+        const message = `${error.errCode || error.code || ''} ${error.errMsg || error.message || ''}`
+        if (/-504003|timed out after (?:3|5) seconds|functions_time_limit_exceeded/i.test(message)) {
+          this.autoPassUnavailableSong(msg)
+          return
+        }
+        wx.showToast({
+          title: '云服务暂时不可用',
+          icon: 'none'
+        })
+      }
+    })
+  },
+  refillPlaybackQueue() {
+    if (this.data.isRefillingQueue || !app.globalData.userInfo) {
+      return
+    }
+    const requestId = this.data.refillRequestId + 1
+    this.data.refillRequestId = requestId
+    this.setData({ isRefillingQueue: true })
+    const finish = () => {
+      if (this.data.refillRequestId === requestId) {
+        this.setData({ isRefillingQueue: false })
+      }
+    }
+    setTimeout(finish, 12000)
+    app.request({
+      url: 'song/refill',
+      data: { count: 3 },
+      success: finish,
+      error: () => {
+        finish()
+        return true
+      },
+      fail: finish
+    })
+  },
+  autoPassUnavailableSong(msg) {
+    if (!msg || !msg.song || this.data.failedSongPassId === msg._id) {
+      return
+    }
+    this.setData({ failedSongPassId: msg._id })
+    this.data.bgPlayer.stop()
+    this.setData({
+      musicLrcObj: [],
+      lrcString: ''
+    })
+    wx.showToast({
+      title: '歌曲无法播放，自动切歌',
+      icon: 'none'
+    })
+    app.request({
+      url: 'song/autoPass',
+      data: {
+        queue_id: msg._id,
+        mid: msg.song.mid,
+        source: msg.song.source
+      },
+      success: () => {
+        this.setData({ failedSongPassId: '' })
+        this.refillPlaybackQueue()
+      },
+      error: () => {
+        this.setData({ failedSongPassId: '' })
+        this.refillPlaybackQueue()
+        return true
+      },
+      fail: () => {
+        this.setData({ failedSongPassId: '' })
+        this.refillPlaybackQueue()
+      }
+    })
+  },
+  // 封面图加载失败时回退本地占位图，不影响播放
+  onPlayerPicError() {
+    this.setData({
+      playerPicError: true
+    })
   },
   // 添加系统消息
   addSystemMessage(msg) {
@@ -526,17 +811,18 @@ Page({
             messageList.unshift(_obj)
           }
         }
-        this.setData({
-          messageList: messageList
-        });
         messageList.unshift({
           type: 'system',
           content: this.data.roomInfo.room_notice ? this.data.roomInfo.room_notice : ('欢迎来到' + this.data.roomInfo.room_name + '!')
         })
-        this.setData({
-          messageList: messageList
+        this.resolveMessageCloudUrls(messageList).then((resolvedMessages) => {
+          this.setData({ messageList: resolvedMessages })
+          this.autoScroll()
+        }).catch((error) => {
+          console.error('[MessageAvatar]', error)
+          this.setData({ messageList })
+          this.autoScroll()
         })
-        this.autoScroll()
       }
     })
   },
@@ -609,6 +895,10 @@ Page({
               carEventChannel: res.eventChannel
             })
             res.eventChannel.emit('sendSongInfo', this.data.songInfo)
+            res.eventChannel.emit('sendLrcList', this.data.musicLrcObj || [])
+            if (typeof this.data._lrcIndex === 'number') {
+              res.eventChannel.emit('sendLrcIndex', this.data._lrcIndex)
+            }
           }
         })
         break
@@ -627,12 +917,6 @@ Page({
           url: '../song/my?bbbug=' + app.globalData.systemVersion
         })
         break
-      case '注销':
-        wx.showToast({
-          title: '云开发身份由微信管理',
-          icon: 'none'
-        })
-        break
       case '资料':
         wx.navigateTo({
           url: '../user/motify',
@@ -641,6 +925,11 @@ Page({
               this.getMyInfo(false)
             }
           }
+        })
+        break
+      case '提示词':
+        wx.navigateTo({
+          url: '../room/prompts'
         })
         break
       case '分享':
@@ -796,11 +1085,19 @@ Page({
             }
             break
           case '收藏歌曲':
+            if (!this.data.songInfo || !this.data.songInfo.song) {
+              wx.showToast({
+                title: '当前没有正在播放的歌曲',
+                icon: 'none'
+              })
+              break
+            }
             app.request({
               url: api.addMySong,
               data: {
                 room_id: app.globalData.roomInfo.room_id,
                 mid: this.data.songInfo.song.mid,
+                source: this.data.songInfo.song.source,
                 song: this.data.songInfo.song
               },
               loading: '收藏中',
@@ -812,24 +1109,35 @@ Page({
             })
             break
           case '切歌':
-            if (this.data.roomInfo.room_user != this.data.userInfo.user_id && this.data.songInfo.user.user_id != this.data.userInfo.user_id) {
-              wx.showToast({
-                title: '只有房主或点歌人可以切歌',
-                icon: 'none'
+            if (!this.data.songInfo || !this.data.songInfo.song || !this.data.songInfo.user) {
+              app.request({
+                url: 'song/pass',
+                data: {
+                  room_id: app.globalData.roomInfo.room_id
+                },
+                loading: '加载歌曲中',
+                success: (res) => {
+                  wx.showToast({
+                    title: res.msg
+                  })
+                }
               })
-              return
+              break
             }
             app.request({
               url: 'song/pass',
               data: {
                 room_id: app.globalData.roomInfo.room_id,
                 mid: this.data.songInfo.song.mid,
+                source: this.data.songInfo.song.source,
+                queue_id: this.data.songInfo._id,
               },
               loading: '切歌中',
-              success: () => {
+              success: (res) => {
                 wx.showToast({
-                  title: '切歌成功'
+                  title: res.msg || '切歌完成'
                 })
+                this.refillPlaybackQueue()
               }
             })
             break
@@ -909,11 +1217,16 @@ Page({
     this.autoScroll()
   },
   tapToAddSong() {
+    if (!this.data.songInfo || !this.data.songInfo.song) {
+      this.say('当前没有正在播放的歌曲')
+      return
+    }
     app.request({
       url: 'song/addMySong',
       data: {
         room_id: app.globalData.roomInfo.room_id,
         mid: this.data.songInfo.song.mid,
+        source: this.data.songInfo.song.source,
         song: this.data.songInfo.song
       },
       loading: '收藏中',
@@ -927,18 +1240,33 @@ Page({
     })
   },
   longPressPassTheSong() {
-    if (this.data.roomInfo.room_user != this.data.userInfo.user_id && this.data.songInfo.user.user_id != this.data.userInfo.user_id) {
-      this.say('只有房主或点歌人可以切歌')
+    if (!this.data.songInfo || !this.data.songInfo.song || !this.data.songInfo.user) {
+      app.request({
+        url: 'song/pass',
+        data: {
+          room_id: app.globalData.roomInfo.room_id
+        },
+        success: (res) => {
+          this.say(res.msg)
+        },
+        error: (res) => {
+          this.say(res.msg)
+          return true
+        }
+      })
       return
     }
     app.request({
       url: 'song/pass',
       data: {
         room_id: app.globalData.roomInfo.room_id,
-        mid: this.data.songInfo.song.mid
+        mid: this.data.songInfo.song.mid,
+        source: this.data.songInfo.song.source,
+        queue_id: this.data.songInfo._id
       },
       success: (res) => {
         this.say(res.msg)
+        this.refillPlaybackQueue()
       },
       error: () => {
         return true
@@ -1116,16 +1444,51 @@ Page({
       wx.showToast({ title: '语音上传失败', icon: 'none' })
     })
   },
+  resolveVoiceSource(source) {
+    if (!source) {
+      return Promise.reject(new Error('语音资源地址为空'))
+    }
+    if (!/^cloud:\/\//i.test(source)) {
+      return Promise.resolve(this.getStaticUrl(source))
+    }
+    if (this.data.voiceFileCache[source]) {
+      return Promise.resolve(this.data.voiceFileCache[source])
+    }
+    return wx.cloud.downloadFile({ fileID: source }).then((result) => {
+      if (!result.tempFilePath) {
+        throw new Error('语音文件下载失败')
+      }
+      this.data.voiceFileCache[source] = result.tempFilePath
+      return result.tempFilePath
+    })
+  },
   playVoice(e) {
     const msg = e.mark.msg
+    const source = msg.resource || msg.content
     if (this.data.voicePlayingId === msg.message_id) {
+      this.data.voicePlayRequestId += 1
       this.data.voicePlayer.stop()
+      this.setData({ voicePlayingId: '', voiceSource: '' })
       return
     }
+    const requestId = this.data.voicePlayRequestId + 1
+    this.data.voicePlayRequestId = requestId
     this.data.voicePlayer.stop()
-    this.data.voicePlayer.src = msg.resource || msg.content
-    this.data.voicePlayer.play()
-    this.setData({ voicePlayingId: msg.message_id })
+    this.setData({ voicePlayingId: msg.message_id, voiceSource: source })
+    this.resolveVoiceSource(source).then((playableSource) => {
+      if (requestId !== this.data.voicePlayRequestId) {
+        return
+      }
+      this.data.voicePlayer.src = playableSource
+      this.data.voicePlayer.play()
+    }).catch((error) => {
+      if (requestId !== this.data.voicePlayRequestId) {
+        return
+      }
+      console.error('[ResolveVoiceSource]', error, source)
+      this.setData({ voicePlayingId: '', voiceSource: '' })
+      wx.showToast({ title: '语音加载失败，请稍后重试', icon: 'none' })
+    })
   },
   backCar() {
     this.setData({

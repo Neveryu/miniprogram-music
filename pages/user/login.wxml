@@ -1,29 +1,71 @@
-<view class="page" xmlns:wx="http://www.w3.org/1999/xhtml">
-  <view class="page__bd" wx:if="{{bbbug}}">
-    <view class="app_title">Music For U</view>
-    <view class="app_desc">完善微信资料后加入 Music For U</view>
-    <form class="login-card" bindsubmit="wxLogin">
-      <button class="avatar-button" open-type="chooseAvatar" bindchooseavatar="chooseWechatAvatar">
-        <image src="{{userHead||'/res/image/nohead.jpg'}}" mode="aspectFill"></image>
-      </button>
-      <view class="avatar-tip">点击选择微信头像</view>
-      <view class="weui-cells">
-        <view class="weui-cell weui-cell_input">
-          <view class="weui-cell__hd"><view class="weui-label">昵称</view></view>
-          <view class="weui-cell__bd"><input class="weui-input" type="nickname" name="user_name" placeholder="请选择或输入昵称" /></view>
+<view class="vinyl-page">
+  <view class="paper-grain"></view>
+
+  <view class="masthead reveal r1">
+    <text class="mast-text">MUSIC FOR U · VOL.886</text>
+    <view class="mast-rule"></view>
+    <text class="mast-text">EST. 2026</text>
+  </view>
+
+  <view class="hero">
+    <view class="deck reveal r2">
+      <view class="record-shadow"></view>
+      <view class="record">
+        <view class="record-label"></view>
+        <view class="record-spindle"></view>
+      </view>
+      <view class="tonearm">
+        <view class="arm-base"></view>
+        <view class="arm-stick"></view>
+        <view class="arm-head"></view>
+      </view>
+    </view>
+    <view class="hero-title reveal r2">Music For U</view>
+    <view class="hero-sub reveal r2">在音乐里，遇见同频的你</view>
+  </view>
+
+  <view class="ticket reveal r3">
+    <view class="ticket-head">
+      <text class="ticket-label">ADMIT ONE · 入场券</text>
+      <text class="ticket-free">FREE</text>
+      <view class="ticket-notch notch-l"></view>
+      <view class="ticket-notch notch-r"></view>
+    </view>
+    <view class="ticket-body">
+      <view class="ticket-title">进入你的音乐房间</view>
+      <view class="ticket-desc">选择微信头像，加入实时点歌与互动</view>
+      <view class="button-wrap">
+        <button
+          class="login-button {{agreementChecked ? 'is-ready' : ''}}"
+          open-type="chooseAvatar"
+          bindchooseavatar="chooseWechatAvatar"
+          loading="{{isLoggingIn}}"
+          disabled="{{isLoggingIn}}"
+        >
+          <text class="btn-note">♪</text>
+          <text>{{isLoggingIn ? '正在检票入场...' : '使用微信头像登录'}}</text>
+        </button>
+        <view class="lock-shield" wx:if="{{!agreementChecked}}" catchtap="onDisabledLoginTap"></view>
+      </view>
+      <view class="login-hint" wx:if="{{!agreementChecked}}">勾选同意协议后，即可点亮登录按钮</view>
+      <view class="consent-row {{consentShake ? 'is-shaking' : ''}}">
+        <view class="consent-check {{agreementChecked ? 'checked' : ''}} {{consentShake ? 'is-alerting' : ''}}" bindtap="toggleAgreement">
+          <text wx:if="{{agreementChecked}}">✓</text>
+          <text wx:elif="{{consentShake}}" class="check-alert">!</text>
         </view>
-        <view class="weui-cell weui-cell_input" bindtap="changeSex">
-          <view class="weui-cell__hd"><view class="weui-label">性别</view></view>
-          <view class="weui-cell__bd"><input class="weui-input" value="{{userSex<0?'请选择性别':sexList[userSex]}}" disabled="true" /></view>
-        </view>
-        <view class="weui-cell weui-cell_input">
-          <view class="weui-cell__hd"><view class="weui-label">签名</view></view>
-          <view class="weui-cell__bd"><input class="weui-input" name="user_remark" maxlength="100" placeholder="请输入个性签名" /></view>
+        <view class="consent-flag" wx:if="{{consentShake}}">先勾选同意，才能检票入场</view>
+        <view class="consent-copy" bindtap="toggleAgreement">
+          <text>我已阅读并同意</text>
+          <text class="consent-link {{serviceRead ? 'read' : ''}}" catchtap="readAgreement" data-type="service">《用户服务协议》</text>
+          <text>和</text>
+          <text class="consent-link {{privacyRead ? 'read' : ''}}" catchtap="readAgreement" data-type="privacy">《隐私政策》</text>
         </view>
       </view>
-      <button class="weui-btn wechat-login-button" type="primary" form-type="submit" loading="{{isLoggingIn}}" disabled="{{isLoggingIn}}">
-        {{isLoggingIn ? '登录中...' : '完成微信登录'}}
-      </button>
-    </form>
+    </view>
+  </view>
+
+  <view class="page-foot reveal r4">
+    <view class="foot-rule"></view>
+    <text class="foot-text">头像仅用于音乐房间内展示 · 登录操作由你本人确认</text>
   </view>
 </view>

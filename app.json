@@ -4,11 +4,15 @@
   "pages": [
     "pages/index/index",
     "pages/user/login",
+    "pages/user/agreement",
     "pages/user/motify",
     "pages/song/select",
+    "pages/song/playlist",
+    "pages/song/user-playlists",
     "pages/song/playing",
     "pages/song/my",
-    "pages/song/car-mode"
+    "pages/song/car-mode",
+    "pages/room/prompts"
   ],
   "entryPagePath": "pages/index/index",
   "requiredBackgroundModes": [

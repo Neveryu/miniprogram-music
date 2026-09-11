@@ -1,0 +1,31 @@
+<view wx:if="{{bbbug}}" class="playlist-page">
+  <view class="user-summary" wx:if="{{user}}">
+    <image class="user-avatar" src="{{user.avatar || '/res/image/nohead.jpg'}}" mode="aspectFill" binderror="onUserAvatarError"></image>
+    <view class="user-summary-content">
+      <view class="user-summary-name">{{user.name}}</view>
+      <view class="user-summary-signature">{{user.signature || (source=='tencent'?'QQ音乐用户':'这个用户还没有填写签名')}}</view>
+      <view class="user-summary-meta">公开歌单 {{user.playlistCount == null ? playlistList.length : user.playlistCount}} 个</view>
+    </view>
+  </view>
+
+  <view class="section-title">公开歌单</view>
+  <view class="empty-state" wx:if="{{hasLoaded && playlistList.length==0}}">
+    <image class="empty-image" src="/res/image/alert.png"></image>
+    <view class="empty-text">该用户没有公开歌单</view>
+  </view>
+  <view class="weui-panel weui-panel_access result-panel" wx:if="{{playlistList.length>0}}">
+    <view class="weui-panel__bd">
+      <view class="weui-media-box weui-media-box_appmsg playlist-card" wx:for="{{playlistList}}" wx:key="id" bindtap="openPlaylist" mark:item="{{item}}">
+        <view class="weui-media-box__hd">
+          <image class="result-cover" src="{{item.cover || '/res/image/nohead.jpg'}}" mode="aspectFill" binderror="onPlaylistPicError" data-index="{{index}}"></image>
+        </view>
+        <view class="weui-media-box__bd">
+          <view class="weui-media-box__title">{{item.name}}</view>
+          <view class="weui-media-box__desc">{{item.trackCount || 0}} 首 · 播放量 {{item.playCount || 0}}</view>
+          <view class="result-meta" wx:if="{{item.description}}">{{item.description}}</view>
+        </view>
+        <view class="result-arrow">›</view>
+      </view>
+    </view>
+  </view>
+</view>

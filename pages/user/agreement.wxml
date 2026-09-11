@@ -1,0 +1,32 @@
+<view class="agreement-page">
+  <view class="agreement-head">
+    <view class="head-badge">{{badge}}</view>
+    <view class="head-title">{{title}}</view>
+    <view class="head-meta">
+      <view class="meta-line"></view>
+      <text>{{version}}</text>
+      <view class="meta-line"></view>
+    </view>
+    <view class="head-intro">{{intro}}</view>
+  </view>
+
+  <view class="agreement-body">
+    <view class="section reveal" wx:for="{{sections}}" wx:key="title" style="animation-delay: {{index * 0.05}}s">
+      <view class="section-title">
+        <view class="title-dot"></view>
+        <text>{{item.title}}</text>
+      </view>
+      <view class="section-items">
+        <view class="section-item" wx:for="{{item.items}}" wx:for-item="text" wx:key="*this">
+          <text>{{text}}</text>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <view class="agreement-foot">
+    <view class="foot-line"></view>
+    <view class="foot-text">如对本{{type === 'privacy' ? '政策' : '协议'}}有任何疑问，请通过微信开放社区联系开发者</view>
+    <button class="foot-back" bindtap="backToLogin">我已阅读并理解</button>
+  </view>
+</view>

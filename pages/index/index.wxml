@@ -47,6 +47,11 @@
             <view class="bbbug_voice {{voicePlayingId==item.message_id?'playing':''}}" wx:if="{{item.type=='voice'}}"
               bindtap="playVoice" mark:msg="{{item}}">
               <i class="iconfont icon-sound"></i>
+              <view class="bbbug_voice_wave" wx:if="{{voicePlayingId==item.message_id}}" aria-label="正在播放">
+                <view class="bbbug_voice_wave_bar bar-one"></view>
+                <view class="bbbug_voice_wave_bar bar-two"></view>
+                <view class="bbbug_voice_wave_bar bar-three"></view>
+              </view>
               <text>{{helper.voiceDuration(item.duration)}}</text>
             </view>
             <view class="bbbug_link" wx:if="{{item.type=='link'}}">
@@ -99,7 +104,7 @@
   <!-- 播放器(顶部固定长条) -->
   <view class="bbbug_player" bindtap="showSongMenu" bindlongpress="setSimplePlayer" wx:if="{{!simplePlayer}}">
     <view wx:if="{{songInfo}}">
-      <image class="bbbug_player_img" src="{{helper.getStaticUrl(songInfo.song.pic)}}" mode="widthFix"></image>
+      <image class="bbbug_player_img {{isMusicPlaying ? 'music-cover-playing' : ''}}" src="{{playerPicError ? '/res/image/nohead.jpg' : helper.getStaticUrl(songInfo.song.pic)}}" mode="widthFix" binderror="onPlayerPicError"></image>
       <image class="bbbug_player_outer" src="/res/image/player_bg.png" mode="widthFix"></image>
       <image class="bbbug_player_bar" src="/res/image/player_bar.png" mode="widthFix"></image>
       <view class="bbbug_player_song">{{songInfo.song.name}} - {{songInfo.song.singer}}</view>
@@ -117,9 +122,9 @@
       wx:if="{{simplePlayer}}">
       <image class="player_bg" src="../../res/image/player_bg.png"></image>
       <view>
-        <image wx:if="{{songInfo && songInfo.song}}" src="{{helper.getStaticUrl(songInfo.song.pic)}}" mode="widthFix">
+        <image class="{{isMusicPlaying ? 'music-cover-playing' : ''}}" wx:if="{{songInfo && songInfo.song && !playerPicError}}" src="{{helper.getStaticUrl(songInfo.song.pic)}}" mode="widthFix" binderror="onPlayerPicError">
         </image>
-        <image wx:if="{{!songInfo || !songInfo.song}}" src="/res/image/nohead.jpg" mode="widthFix"></image>
+        <image wx:if="{{(!songInfo || !songInfo.song) || playerPicError}}" src="/res/image/nohead.jpg" mode="widthFix"></image>
       </view>
     </movable-view>
   </movable-area>

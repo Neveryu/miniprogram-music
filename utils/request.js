@@ -1,11 +1,5 @@
 const cloudConfig = require('../config/cloud.js')
 
-let _showLogin = () => {
-  wx.navigateTo({
-    url: '../user/login?bbbug=0'
-  })
-}
-
 let config = {
   apiUrl: '',
   cdnUrl: '',
@@ -27,6 +21,8 @@ const getCloudErrorContent = (error) => {
   let reason = '云服务调用失败，请查看云函数日志。'
   if (normalized.indexOf('function not found') > -1 || normalized.indexOf('-501000') > -1) {
     reason = `${cloudConfig.functionName} 云函数尚未部署到目标环境。`
+  } else if (normalized.indexOf('-504003') > -1 || normalized.indexOf('functions_time_limit_exceeded') > -1) {
+    reason = `${cloudConfig.functionName} 云函数执行超时，请确认已部署最新代码和超时配置。`
   } else if (normalized.indexOf('env') > -1 && normalized.indexOf('not found') > -1) {
     reason = '云环境不存在或环境 ID 配置错误。'
   } else if (normalized.indexOf('permission') > -1 || normalized.indexOf('unauthorized') > -1) {
@@ -68,8 +64,16 @@ const request = (data = {}) => {
           wx.showModal({
             title: '身份验证失败',
             content: response.msg || '请先登录',
-            showCancel: false,
-            success: _showLogin
+            confirmText: '去登录',
+            cancelText: '留在当前页',
+            showCancel: true,
+            success: (modalRes) => {
+              if (modalRes.confirm) {
+                wx.navigateTo({
+                  url: '/pages/user/login?bbbug=' + getApp().globalData.systemVersion
+                })
+              }
+            }
           })
         }
         break

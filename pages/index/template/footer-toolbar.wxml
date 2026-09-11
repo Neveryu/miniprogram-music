@@ -38,6 +38,10 @@
     <view class="bbbug_panel_icon"><i class="iconfont icon-icon_compile"></i></view>
     <view class="bbbug_panel_title">资料</view>
   </view>
+  <view class="bbbug_panel_item" wx:if="{{userInfo && roomInfo && userInfo.user_id==roomInfo.room_user}}" bindtap="mainMenuClicked" mark:title="提示词">
+    <view class="bbbug_panel_icon"><i class="iconfont icon-icon_compile"></i></view>
+    <view class="bbbug_panel_title">提示词</view>
+  </view>
   <!-- <view class="bbbug_panel_item" bindtap="mainMenuClicked" mark:title="分享">
     <view class="bbbug_panel_icon"><i class="iconfont icon-qrcode"></i></view>
     <view class="bbbug_panel_title">分享</view>

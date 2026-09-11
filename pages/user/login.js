@@ -1,94 +1,93 @@
 const app = getApp()
 Page({
   data: {
-    bbbug: false,
     isLoggingIn: false,
-    userHead: '',
-    userSex: -1,
-    sexList: ['女生', '男生']
+    agreementChecked: false,
+    serviceRead: false,
+    privacyRead: false,
+    consentShake: false
   },
-  onLoad: function (options) {
-    if (!options.bbbug || options.bbbug != app.globalData.systemVersion) {
-      return
-    }
-    this.setData({
-      bbbug: true
-    })
+  onLoad: function () {
     wx.hideNavigationBarLoading()
     wx.setNavigationBarTitle({
       title: '登录',
     })
   },
-  chooseWechatAvatar(e) {
-    const avatarUrl = e.detail.avatarUrl
-    if (!avatarUrl) {
+  shakeConsent() {
+    if (this.data.consentShake) {
       return
     }
-    wx.showLoading({ title: '上传头像', mask: true })
+    this.setData({ consentShake: true })
+    setTimeout(() => {
+      this.setData({ consentShake: false })
+    }, 900)
+  },
+  onDisabledLoginTap() {
+    if (!this.data.agreementChecked) {
+      this.shakeConsent()
+      wx.vibrateShort({ type: 'light' })
+    }
+  },
+  toggleAgreement() {
+    this.setData({
+      agreementChecked: !this.data.agreementChecked
+    })
+  },
+  readAgreement(e) {
+    const type = e.currentTarget.dataset.type
+    wx.navigateTo({
+      url: '/pages/user/agreement?type=' + (type === 'service' ? 'service' : 'privacy')
+    })
+  },
+  chooseWechatAvatar(e) {
+    if (this.data.isLoggingIn || !this.data.agreementChecked) {
+      return
+    }
+    const avatarUrl = e.detail.avatarUrl
+    if (!avatarUrl) {
+      wx.showToast({ title: '请选择微信头像后继续', icon: 'none' })
+      return
+    }
+    this.setData({ isLoggingIn: true })
+    wx.showLoading({ title: '登录中', mask: true })
     const extension = avatarUrl.match(/\.([a-zA-Z0-9]+)(?:\?|$)/)
     const cloudPath = `avatars/${Date.now()}-${Math.random().toString(16).slice(2)}.${extension ? extension[1] : 'jpg'}`
     wx.cloud.uploadFile({ cloudPath, filePath: avatarUrl }).then((result) => {
-      wx.hideLoading()
-      this.setData({ userHead: result.fileID })
+      this.loginWithAvatar(result.fileID)
     }).catch((error) => {
       wx.hideLoading()
+      this.setData({ isLoggingIn: false })
       console.error('[LoginAvatar]', error)
       wx.showToast({ title: '头像上传失败', icon: 'none' })
     })
   },
-  changeSex() {
-    wx.showActionSheet({
-      itemList: this.data.sexList,
-      success: (res) => this.setData({ userSex: res.tapIndex })
-    })
-  },
-  wxLogin(e) {
-    if (this.data.isLoggingIn) {
-      return
-    }
-    if (!this.data.userHead) {
-      wx.showToast({ title: '请先选择微信头像', icon: 'none' })
-      return
-    }
-    const form = e.detail.value
-    if (!String(form.user_name || '').trim()) {
-      wx.showToast({ title: '请选择或输入昵称', icon: 'none' })
-      return
-    }
-    if (this.data.userSex < 0) {
-      wx.showToast({ title: '请选择性别', icon: 'none' })
-      return
-    }
-    this.setData({
-      isLoggingIn: true
-    })
+  loginWithAvatar(userHead) {
     app.request({
       url: 'weapp/wxAppLogin',
       data: {
-        user_head: this.data.userHead,
-        user_name: form.user_name,
-        user_sex: this.data.userSex,
-        user_remark: form.user_remark
+        user_head: userHead
       },
-      loading: '登录中',
       success: (loginRes) => {
+        wx.hideLoading()
         this.setData({
           isLoggingIn: false
         })
-        wx.setStorageSync('musicAppLoggedIn', true)
         app.globalData.userInfo = loginRes.data
         app.globalData.user_changed = true
         const eventChannel = this.getOpenerEventChannel()
         eventChannel.emit('loginSuccess', loginRes.data)
         wx.navigateBack()
       },
-      error: () => {
+      error: (res) => {
+        wx.hideLoading()
         this.setData({
           isLoggingIn: false
         })
+        wx.showToast({ title: res.msg || '登录失败', icon: 'none' })
         return true
       },
       fail: () => {
+        wx.hideLoading()
         this.setData({
           isLoggingIn: false
         })

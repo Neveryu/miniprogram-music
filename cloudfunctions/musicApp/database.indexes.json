@@ -39,6 +39,7 @@
       "unique": true,
       "fields": [
         { "field": "_openid", "direction": "asc" },
+        { "field": "source", "direction": "asc" },
         { "field": "mid", "direction": "asc" }
       ]
     }

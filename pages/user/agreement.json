@@ -1,0 +1,10 @@
+{
+  "usingComponents": {},
+  "navigationStyle": "default",
+  "navigationBarTitleText": "协议",
+  "navigationBarBackgroundColor": "#0b1020",
+  "navigationBarTextStyle": "white",
+  "backgroundColor": "#0b1020",
+  "backgroundTextStyle": "dark",
+  "enablePullDownRefresh": false
+}

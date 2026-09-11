@@ -1,5 +1,5 @@
-<view class="car-mode" wx:if="{{isCarMode}}" bindlongpress="longPressPassTheSong" bindtap="tapToAddSong" style="background-image: url({{songInfo.song.pic}})">
-  <view class="car-mode-player" wx:if="{{songInfo}}">
+<view class="car-mode" wx:if="{{isCarMode}}" bindlongpress="longPressPassTheSong" bindtap="tapToAddSong" style="background-image: url({{songInfo && songInfo.song && !playerPicError ? songInfo.song.pic : ''}})">
+  <view class="car-mode-player" wx:if="{{songInfo && songInfo.song}}">
     <view class="car-mode-img">
       <!-- <image src="{{songInfo.song.pic}}" /> -->
     </view>

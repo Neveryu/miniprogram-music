@@ -5,8 +5,8 @@ module.exports.getStaticUrl = function (url) {
   if (!url) {
     return '';
   }
-  if (url.indexOf("https://") == 0 || url.indexOf("http://") == 0) {
-    return url;
+  if (url.indexOf("cloud://") == 0) {
+    return '/res/image/nohead.jpg';
   }
   return url;
 };

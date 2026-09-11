@@ -1,95 +1,1139 @@
+/* ============================================================
+   Midnight Cruise · 深夜巡航
+   色彩逻辑：环境冷（深蓝夜色）/ 灯光暖（琥珀色）
+   注意：本页为 component 页面，样式隔离，page 选择器不生效
+   ============================================================ */
+
 .car-mode {
   position: fixed;
   left: 0;
   right: 0;
   top: 0;
   bottom: 0;
-  /* background-color: rgba(0, 0, 0, 0.5); */
-  background-repeat: no-repeat;
-  background-size: 100% 100%;
-  /* backdrop-filter: blur(20px); */
+  background: linear-gradient(180deg, #03060f 0%, #081026 34%, #101b3d 58%, #182750 78%, #0d1526 100%);
   z-index: 30;
-}
-.car-mode::before{  
-  content: ' ';
-  position: fixed;
-  filter: blur(2px);
-  z-index: -1;
-  /* background: url('http://www.zi-han.net.img.800cdn.com/theme/hplus/img/a3.jpg') no-repeat; */
-  width: 100%;
-  height: 100%;
-  top: 0;
-  left: 0;
-  background-size: cover;
   overflow: hidden;
+  font-family: "PingFang SC", "HarmonyOS Sans", -apple-system, sans-serif;
 }
 
+/* ---------- 场景容器 ---------- */
+.car-scene {
+  position: absolute;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* 夜空氛围光（冷蓝 + 微暖，营造空气感） */
+.nav-nebula {
+  position: absolute;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  background:
+    radial-gradient(60% 38% at 18% 16%, rgba(72, 132, 210, 0.10), transparent 70%),
+    radial-gradient(46% 30% at 80% 10%, rgba(96, 156, 200, 0.07), transparent 70%),
+    radial-gradient(50% 24% at 50% 46%, rgba(240, 184, 96, 0.05), transparent 70%);
+}
+
+/* ---------- 星空 ---------- */
+.nav-star {
+  position: absolute;
+  border-radius: 50%;
+  background: #fff;
+  animation: star-twinkle 3s ease-in-out infinite;
+}
+.s1 { width: 5rpx; height: 5rpx; left: 7%;  top: 5%; }
+.s2 { width: 7rpx; height: 7rpx; left: 22%; top: 11%; animation-delay: 0.5s; }
+.s3 { width: 4rpx; height: 4rpx; left: 36%; top: 4%;  animation-delay: 1.1s; }
+.s4 { width: 6rpx; height: 6rpx; left: 48%; top: 13%; animation-delay: 1.7s; }
+.s5 { width: 4rpx; height: 4rpx; left: 59%; top: 6%;  animation-delay: 0.3s; }
+.s6 { width: 8rpx; height: 8rpx; left: 70%; top: 10%; animation-delay: 2.1s; }
+.s7 { width: 4rpx; height: 4rpx; left: 79%; top: 4%;  animation-delay: 1.4s; }
+.s8 { width: 5rpx; height: 5rpx; left: 86%; top: 15%; animation-delay: 0.8s; }
+.s9 { width: 6rpx; height: 6rpx; left: 93%; top: 8%;  animation-delay: 1.9s; }
+.s10 { width: 4rpx; height: 4rpx; left: 14%; top: 18%; animation-delay: 2.5s; }
+
+@keyframes star-twinkle {
+  0%, 100% { opacity: 0.15; }
+  50% { opacity: 0.85; }
+}
+
+/* 偶现流星 */
+.nav-meteor {
+  position: absolute;
+  left: -140rpx;
+  top: 130rpx;
+  width: 130rpx;
+  height: 3rpx;
+  border-radius: 3rpx;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.9), transparent);
+  transform: rotate(14deg);
+  opacity: 0;
+  animation: meteor-fly 9s linear infinite 3s;
+}
+
+@keyframes meteor-fly {
+  0%, 86% { transform: translate(0, 0) rotate(14deg); opacity: 0; }
+  88% { opacity: 1; }
+  100% { transform: translate(940rpx, 220rpx) rotate(14deg); opacity: 0; }
+}
+
+/* 月亮 */
+.nav-moon {
+  position: absolute;
+  right: 76rpx;
+  top: 108rpx;
+  width: 92rpx;
+  height: 92rpx;
+  border-radius: 50%;
+  background: radial-gradient(circle at 36% 34%, #fffdf3, #f2eaad 58%, #dfd58c);
+  box-shadow:
+    0 0 36rpx 10rpx rgba(255, 246, 205, 0.18),
+    0 0 110rpx 40rpx rgba(255, 246, 205, 0.07);
+}
+
+/* ---------- 双层城市剪影 ---------- */
+/* 远景：更高更暗，无窗灯 */
+.nav-cityline-far {
+  bottom: 686rpx;
+}
+.nav-fb {
+  position: absolute;
+  bottom: 0;
+  width: 7%;
+  background: linear-gradient(180deg, #0a1228, #081020);
+  border-radius: 4rpx 4rpx 0 0;
+  opacity: 0.85;
+}
+
+/* 近景：贴地平线，带窗灯 */
+.nav-cityline {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 678rpx;
+  height: 160rpx;
+}
+.nav-bldg {
+  position: absolute;
+  bottom: 0;
+  width: 6%;
+  background: linear-gradient(180deg, #0c1730, #0a1226);
+  border-radius: 4rpx 4rpx 0 0;
+}
+/* 楼宇窗灯：暖光为主，零星冷光 */
+.nav-bldg::after {
+  content: ' ';
+  position: absolute;
+  left: 10rpx;
+  right: 10rpx;
+  top: 12rpx;
+  bottom: 8rpx;
+  background-image:
+    radial-gradient(circle 3rpx at 12rpx 18rpx, rgba(255, 205, 130, 0.8) 3rpx, transparent 4rpx),
+    radial-gradient(circle 3rpx at 34rpx 44rpx, rgba(150, 190, 255, 0.55) 3rpx, transparent 4rpx);
+  background-size: 46rpx 62rpx;
+}
+/* 高楼航空障碍灯 */
+.nav-bldg-beacon::before {
+  content: ' ';
+  position: absolute;
+  top: -10rpx;
+  left: 50%;
+  width: 8rpx;
+  height: 8rpx;
+  margin-left: -4rpx;
+  border-radius: 50%;
+  background: #ff4d4f;
+  box-shadow: 0 0 10rpx 2rpx rgba(255, 77, 79, 0.6);
+  animation: beacon-blink 1.8s ease-in-out infinite;
+}
+
+@keyframes beacon-blink {
+  0%, 100% { opacity: 0.12; }
+  50% { opacity: 1; }
+}
+
+/* ---------- 伪 3D 路面 ----------
+   地平线距屏幕底部 670rpx，楼底 678rpx，路消失点与楼底基本衔接。
+   路面顶边在屏幕 42%~58%，底边延伸出屏（-18%~118%）。 */
+.nav-ground {
+  position: absolute;
+  bottom: 0;
+  width: 42%;
+  height: 670rpx;
+  background: linear-gradient(180deg, #16244a 0%, #101a30 32%, #0e1728 100%);
+}
+.nav-ground-l {
+  left: 0;
+  clip-path: polygon(0 0, 100% 0, 0 100%);
+}
+.nav-ground-r {
+  right: 0;
+  clip-path: polygon(100% 0, 0 0, 100% 100%);
+}
+
+.nav-road {
+  position: absolute;
+  left: -18%;
+  right: -18%;
+  bottom: 0;
+  height: 670rpx;
+  background: linear-gradient(180deg, #1a2440 0%, #232c3e 40%, #2e3850 72%, #3d4763 100%);
+  clip-path: polygon(42.37% 0, 57.63% 0, 100% 100%, 0 100%);
+}
+
+/* 路边实线：暖色反光标线，近亮远暗 */
+.nav-edge {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(180deg, rgba(240, 184, 96, 0.10) 0%, rgba(240, 184, 96, 0.42) 45%, rgba(245, 199, 118, 0.72) 100%);
+}
+.nav-edge-l {
+  clip-path: polygon(43.2% 0, 44.1% 0, 2.7% 100%, 0.7% 100%);
+}
+.nav-edge-r {
+  clip-path: polygon(55.9% 0, 56.8% 0, 99.3% 100%, 97.3% 100%);
+}
+
+/* 车道虚线：暖色，带微光，从地平线小点向下放大流动 */
+.nav-dash {
+  position: absolute;
+  width: 14rpx;
+  height: 82rpx;
+  border-radius: 6rpx;
+  background: rgba(245, 205, 125, 0.9);
+  box-shadow: 0 0 14rpx rgba(245, 205, 125, 0.35);
+  opacity: 0;
+}
+.nav-dash-1 {
+  left: 27.33%;
+  bottom: 20rpx;
+  margin-left: -7rpx;
+  animation: dash-1 2.4s linear infinite;
+}
+.nav-dash-2 {
+  left: 72.67%;
+  bottom: 20rpx;
+  margin-left: -7rpx;
+  animation: dash-2 2.4s linear infinite;
+}
+.nav-dash.b { animation-delay: -0.6s; }
+.nav-dash.c { animation-delay: -1.2s; }
+.nav-dash.d { animation-delay: -1.8s; }
+
+/* 车道分隔线：地平线处 47.46%/52.54%，屏幕底部处 27.33%/72.67% */
+@keyframes dash-1 {
+  0% {
+    transform: translate(151rpx, -670rpx) scale(0.1);
+    opacity: 0;
+  }
+  10% { opacity: 0.9; }
+  90% { opacity: 0.9; }
+  100% {
+    transform: translate(0, 0) scale(1);
+    opacity: 0;
+  }
+}
+
+@keyframes dash-2 {
+  0% {
+    transform: translate(-151rpx, -670rpx) scale(0.1);
+    opacity: 0;
+  }
+  10% { opacity: 0.9; }
+  90% { opacity: 0.9; }
+  100% {
+    transform: translate(0, 0) scale(1);
+    opacity: 0;
+  }
+}
+
+/* ---------- 路侧行道树 ----------
+   树冠用双层深绿，融入夜色；按透视深度缩放 */
+.nav-tree {
+  position: absolute;
+  width: 70rpx;
+  height: 120rpx;
+}
+.tree-trunk {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  width: 8rpx;
+  height: 36rpx;
+  margin-left: -4rpx;
+  border-radius: 4rpx;
+  background: linear-gradient(180deg, #1c2438, #141b2c);
+}
+.tree-crown {
+  position: absolute;
+  left: 50%;
+  bottom: 26rpx;
+  width: 64rpx;
+  height: 64rpx;
+  margin-left: -32rpx;
+  border-radius: 50%;
+  background: radial-gradient(circle at 38% 32%, #1d3140, #14222e 70%);
+  box-shadow: 0 6rpx 14rpx rgba(0, 0, 0, 0.3);
+}
+/* 左侧三棵：由近到远 */
+.tree-l1 { left: 4%;   bottom: 380rpx; transform: scale(0.8); }
+.tree-l2 { left: 14%;  bottom: 510rpx; transform: scale(0.5); }
+.tree-l3 { left: 24%;  bottom: 570rpx; transform: scale(0.3); }
+/* 右侧三棵：由近到远 */
+.tree-r1 { right: 3%;  bottom: 360rpx; transform: scale(0.85); }
+.tree-r2 { right: 12%; bottom: 495rpx; transform: scale(0.52); }
+.tree-r3 { right: 22%; bottom: 565rpx; transform: scale(0.32); }
+
+/* ---------- 路侧路灯 ----------
+   灯杆+悬臂+暖光灯头；右侧用 scaleX(-1) 镜像；按深度缩放 */
+.nav-lamp {
+  position: absolute;
+  width: 70rpx;
+  height: 140rpx;
+}
+.nav-lamp::before {
+  /* 灯杆 */
+  content: ' ';
+  position: absolute;
+  left: 6rpx;
+  bottom: 0;
+  width: 6rpx;
+  height: 128rpx;
+  border-radius: 3rpx;
+  background: linear-gradient(180deg, #3a4560, #222b44);
+}
+.nav-lamp::after {
+  /* 悬臂 + 灯头 */
+  content: ' ';
+  position: absolute;
+  left: 8rpx;
+  top: 6rpx;
+  width: 52rpx;
+  height: 22rpx;
+  background:
+    linear-gradient(180deg, #ffd98f, #f5b95a) no-repeat 34rpx 6rpx / 18rpx 16rpx,
+    linear-gradient(180deg, #2c3450, #2c3450) no-repeat 0 0 / 40rpx 5rpx;
+  border-radius: 8rpx;
+  box-shadow: 0 0 16rpx 4rpx rgba(255, 214, 138, 0.4);
+}
+/* 灯头柔光 */
+.lamp-glow {
+  position: absolute;
+  left: 26rpx;
+  top: -14rpx;
+  width: 90rpx;
+  height: 54rpx;
+  border-radius: 50%;
+  background: radial-gradient(ellipse at center, rgba(255, 214, 138, 0.3) 0%, transparent 70%);
+  animation: lamp-breathe 4s ease-in-out infinite;
+}
+
+@keyframes lamp-breathe {
+  0%, 100% { opacity: 0.75; }
+  50% { opacity: 1; }
+}
+
+/* 左侧两盏：由近到远 */
+.lamp-l1 { left: 14%;  bottom: 400rpx; transform: scale(0.72); }
+.lamp-l2 { left: 26.5%; bottom: 540rpx; transform: scale(0.45); }
+/* 右侧两盏：镜像 + 缩放 */
+.lamp-r1 { right: 15%; bottom: 450rpx; transform: scaleX(-1) scale(0.6); }
+.lamp-r2 { right: 26%; bottom: 580rpx; transform: scaleX(-1) scale(0.36); }
+
+/* ---------- 灯下光池（暖光落在路面） ---------- */
+.nav-pool {
+  position: absolute;
+  width: 140rpx;
+  height: 46rpx;
+  border-radius: 50%;
+  background: radial-gradient(ellipse at center, rgba(255, 214, 138, 0.16) 0%, rgba(255, 214, 138, 0.05) 55%, transparent 75%);
+}
+.pool-l1 { left: 15%;  bottom: 362rpx; transform: scale(0.8); }
+.pool-l2 { left: 27.5%; bottom: 515rpx; transform: scale(0.5); }
+.pool-r1 { right: 15%; bottom: 412rpx; transform: scale(0.66); }
+.pool-r2 { right: 26.5%; bottom: 556rpx; transform: scale(0.4); }
+
+/* ---------- 远方对向车灯 ----------
+   消失点附近一对小亮点，缓慢呼吸 */
+.nav-far-car {
+  position: absolute;
+  left: 51%;
+  bottom: 655rpx;
+  width: 24rpx;
+  height: 8rpx;
+  margin-left: -12rpx;
+  animation: far-car-glow 6s ease-in-out infinite;
+}
+.far-dot {
+  position: absolute;
+  top: 0;
+  width: 7rpx;
+  height: 7rpx;
+  border-radius: 50%;
+  background: #ffe9b8;
+  box-shadow: 0 0 10rpx 3rpx rgba(255, 230, 180, 0.55);
+}
+.far-dot-l { left: 0; }
+.far-dot-r { right: 0; }
+
+@keyframes far-car-glow {
+  0%, 100% { opacity: 0.2; transform: scale(0.7); }
+  50% { opacity: 1; transform: scale(1); }
+}
+
+/* ---------- 行驶中的小车 ----------
+   几何：路面梯形底边在屏幕底（宽 136%）、顶边在 670rpx（宽 16%），
+   车底在 240rpx。透视原理：车开向远方时，屏幕位移先快后慢、
+   缩放与路面宽度同比例收缩（宽度比 = 该处路宽 / 240rpx 处路宽）。
+   以 transform-origin: 50% 100%（车轮接地点）为缩放锚点，
+   车身始终"坐"在路面上。
+   translateY 必须写在 scale 之前，否则位移会被缩放系数吞噬。 */
+.nav-car {
+  position: absolute;
+  left: 50%;
+  bottom: 240rpx;
+  width: 74rpx;
+  height: 118rpx;
+  margin-left: -37rpx;
+  transform-origin: 50% 100%;
+  animation: car-sway 4.5s ease-in-out infinite;
+  /* 松手后未切歌时平滑退回原位 */
+  transition: transform 0.45s cubic-bezier(0.22, 1.2, 0.36, 1), opacity 0.3s ease;
+}
+
+@keyframes car-sway {
+  0%, 100% { transform: scaleY(0.86) translateX(0); }
+  25% { transform: scaleY(0.86) translateX(5rpx); }
+  50% { transform: scaleY(0.86) translateX(0); }
+  75% { transform: scaleY(0.86) translateX(-5rpx); }
+}
+
+/* 切歌成功：小车沿路面驶向建筑底部（655rpx 处）
+   0% 对齐拖拽阈值时的小车位置，松手瞬间无跳变；
+   各关键帧的位移/缩放按路面宽度曲线标定：
+   h=360→0.77  h=478→0.54  h=552→0.40  h=611→0.29  h=655→0.20 */
+.nav-car.leaving {
+  animation: car-leave 1.15s linear forwards;
+}
+
+@keyframes car-leave {
+  0%   { transform: translateY(-120rpx) scaleY(0.86) scale(0.77); opacity: 1; }
+  20%  { transform: translateY(-238rpx) scaleY(0.86) scale(0.54); opacity: 1; }
+  45%  { transform: translateY(-312rpx) scaleY(0.86) scale(0.4); opacity: 1; }
+  70%  { transform: translateY(-371rpx) scaleY(0.86) scale(0.29); opacity: 0.85; }
+  100% { transform: translateY(-415rpx) scaleY(0.86) scale(0.2); opacity: 0; }
+}
+
+/* 新车从屏幕底部（近处）驶入到原位：由大变小、由快到慢
+   缩放同样跟随路宽比：h=-190→1.83  h=-10→1.48  h=130→1.21 */
+.nav-car.entering {
+  animation: car-enter 1s linear forwards;
+}
+
+@keyframes car-enter {
+  0%   { transform: translateY(430rpx) scaleY(0.86) scale(1.8); opacity: 0; }
+  18%  { opacity: 1; }
+  35%  { transform: translateY(250rpx) scaleY(0.86) scale(1.48); opacity: 1; }
+  65%  { transform: translateY(110rpx) scaleY(0.86) scale(1.21); opacity: 1; }
+  100% { transform: translateY(0) scaleY(0.86) scale(1); opacity: 1; }
+}
+
+/* 车轮接地点阴影 */
+.nav-car-shadow {
+  position: absolute;
+  left: 50%;
+  bottom: -10rpx;
+  width: 128rpx;
+  height: 30rpx;
+  margin-left: -64rpx;
+  border-radius: 50%;
+  background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.55) 0%, transparent 68%);
+}
+
+/* 车头灯光锥（向前上方投射，近车窄远端宽） */
+.nav-car-lightcone {
+  position: absolute;
+  top: -86rpx;
+  width: 66rpx;
+  height: 96rpx;
+  background: linear-gradient(180deg, rgba(255, 216, 148, 0) 0%, rgba(255, 216, 148, 0.16) 100%);
+  clip-path: polygon(0 0, 100% 0, 72% 100%, 28% 100%);
+}
+.nav-car-lightcone-l { left: 2rpx; }
+.nav-car-lightcone-r { right: 2rpx; }
+
+/* 车身 */
+.nav-car-body {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(180deg, #3d8bff 0%, #1a6fe8 60%, #1259c4 100%);
+  border-radius: 18rpx 18rpx 14rpx 14rpx;
+  box-shadow: 0 8rpx 22rpx rgba(0, 0, 0, 0.45);
+}
+
+/* 引擎盖（顶部高光） */
+.nav-car-hood {
+  position: absolute;
+  left: 8rpx;
+  right: 8rpx;
+  top: 6rpx;
+  height: 26rpx;
+  background: linear-gradient(180deg, #6fa8ff, #3d8bff);
+  border-radius: 12rpx;
+}
+
+/* 前挡风玻璃 */
+.nav-car-windshield {
+  position: absolute;
+  left: 10rpx;
+  right: 10rpx;
+  top: 36rpx;
+  height: 24rpx;
+  background: linear-gradient(180deg, #dcedff, #a4c8ec);
+  border-radius: 8rpx;
+}
+
+/* 车顶 */
+.nav-car-roof {
+  position: absolute;
+  left: 10rpx;
+  right: 10rpx;
+  top: 64rpx;
+  bottom: 42rpx;
+  background: linear-gradient(180deg, #5f9bff, #2f7cf0);
+  border-radius: 10rpx;
+}
+
+/* 后挡风玻璃 */
+.nav-car-rearwindow {
+  position: absolute;
+  left: 10rpx;
+  right: 10rpx;
+  bottom: 24rpx;
+  height: 16rpx;
+  background: linear-gradient(180deg, #9cc2e8, #78a8d8);
+  border-radius: 8rpx;
+}
+
+/* 后视镜 */
+.nav-car-mirror {
+  position: absolute;
+  top: 40rpx;
+  width: 12rpx;
+  height: 18rpx;
+  background: #1259c4;
+  border-radius: 4rpx;
+}
+.nav-car-mirror-l { left: -10rpx; }
+.nav-car-mirror-r { right: -10rpx; }
+
+/* 车头灯（暖光） */
+.nav-car-headlight {
+  position: absolute;
+  left: 12rpx;
+  right: 12rpx;
+  top: 2rpx;
+  height: 8rpx;
+  border-radius: 4rpx;
+  background: #ffe4a0;
+  box-shadow: 0 0 16rpx 5rpx rgba(255, 220, 140, 0.55);
+}
+
+/* 尾灯（红光） */
+.nav-car-taillight {
+  position: absolute;
+  left: 12rpx;
+  right: 12rpx;
+  bottom: 2rpx;
+  height: 7rpx;
+  border-radius: 4rpx;
+  background: #ff5a5a;
+  box-shadow: 0 0 12rpx 3rpx rgba(255, 90, 90, 0.5);
+}
+
+/* 暗角：聚焦画面中心 */
+.nav-vignette {
+  position: absolute;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  background: radial-gradient(125% 92% at 50% 44%, transparent 55%, rgba(3, 6, 14, 0.5) 100%);
+}
+
+/* ---------- HUD 玻璃卡片头部 + 歌词 ---------- */
 .car-mode-player {
   position: fixed;
-  left: 20px;
+  left: 36rpx;
   top: 80rpx;
-  right: 20px;
-  bottom: 20px;
+  right: 36rpx;
+  bottom: 540rpx;
   display: flex;
   flex-direction: column;
   justify-content: flex-start;
-  text-shadow: 0px 0px 10px rgba(0, 0, 0, 0.5);
   color: white;
 }
 
-.car-back {
-  position: fixed;
-  bottom: 80px;
-  left: 20px;
-  right: 20px;
-  font-weight: bold;
-  font-size: 18px;
+@keyframes rise-in {
+  from { opacity: 0; transform: translateY(26rpx); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
-.car-mode-tips {
-  font-size: 14px;
-  background-color: #fff;
-  color: #000;
-  font-weight: 300;
-  position: fixed;
-  left: 20px;
-  right: 20px;
-  bottom: 20px;
-  font-weight: bold;
+/* 玻璃卡片：歌曲信息 / 时钟仪表条 / 操作提示，三段结构 */
+.car-mode-header {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(160deg, rgba(16, 26, 52, 0.55), rgba(9, 15, 32, 0.46));
+  border: 1rpx solid rgba(255, 255, 255, 0.1);
+  border-radius: 36rpx;
+  backdrop-filter: blur(28rpx);
+  -webkit-backdrop-filter: blur(28rpx);
+  box-shadow: 0 20rpx 50rpx rgba(0, 0, 0, 0.42);
+  animation: rise-in 0.7s cubic-bezier(0.22, 0.9, 0.3, 1) both 0.1s;
+  overflow: hidden;
+}
+
+/* 卡片顶部琥珀色高光条 */
+.car-mode-header::before {
+  content: ' ';
+  position: absolute;
+  left: 32rpx;
+  right: 32rpx;
+  top: 0;
+  height: 2rpx;
+  background: linear-gradient(90deg, transparent, rgba(240, 184, 96, 0.5), transparent);
+}
+
+.car-mode-header-main {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  padding: 20rpx 26rpx 16rpx;
 }
 
 .car-mode-img {
-  text-align: center;
+  position: relative;
 }
 
 .car-mode-img image {
-  width: 160px;
-  height: 160px;
-  border-radius: 20px;
+  width: 176rpx;
+  height: 176rpx;
+  border-radius: 26rpx;
+  border: 1rpx solid rgba(255, 255, 255, 0.16);
+  box-shadow: 0 12rpx 30rpx rgba(0, 0, 0, 0.45);
+}
+
+/* ---------- 收藏爱心 ----------
+   封面正中常驻红心；点击时：
+   1. 爱心弹性放大点亮（heart-pop）
+   2. 一圈光环扩散（ring）
+   3. 6 粒粒子向四周飞散（particle）
+   心形 = 正方形 + 两个圆角方块旋转拼合 */
+.fav-heart {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 84rpx;
+  height: 84rpx;
+  margin: -42rpx 0 0 -42rpx;
+  pointer-events: none;
+  /* 缩放挂在整个心形容器上：正方形和两个圆一起缩，几何永不变形 */
+  animation: heart-breathe 3s ease-in-out infinite;
+}
+
+/* 心形本体：颜色呼吸（缩放在父级 .fav-heart 上做整体缩放）
+   心形 = 正方形 + 两个圆形伪元素拼合。
+   关键：三部分必须用同一纯色——渐变按各自元素的局部坐标系渲染，
+   正方形被 rotate(45deg) 后渐变方向和圆不一致，拼缝必然露馅；
+   纯色无方向性，怎么拼都是一个整体，立体感交给外发光。 */
+.fav-heart-core,
+.fav-heart-core::before,
+.fav-heart-core::after {
+  position: absolute;
+  background: #d32841;
+  box-shadow: 0 6rpx 24rpx rgba(196, 24, 48, 0.5);
+  animation: heart-glow 3s ease-in-out infinite;
+}
+.fav-heart-core {
+  top: 22rpx;
+  left: 22rpx;
+  width: 40rpx;
+  height: 40rpx;
+  transform: rotate(45deg);
+}
+.fav-heart.burst {
+  animation: heart-pop 0.85s cubic-bezier(0.22, 1.6, 0.36, 1) both;
+}
+
+/* 心跳缩放：整体缩放（父容器），心形各部分比例始终一致 */
+@keyframes heart-breathe {
+  0%, 50%, 100% { transform: scale(0.92); }
+  12% { transform: scale(1.04); }
+  24% { transform: scale(0.96); }
+  36% { transform: scale(1); }
+}
+
+/* 心跳颜色 + 光晕：纯色在深红与亮红之间呼吸（无渐变，三部分天然同步） */
+@keyframes heart-glow {
+  0%, 50%, 100% {
+    background: #d32841;
+    box-shadow: 0 6rpx 24rpx rgba(196, 24, 48, 0.5);
+  }
+  12% {
+    background: #ff4a62;
+    box-shadow: 0 8rpx 32rpx rgba(255, 78, 102, 0.9);
+  }
+  24% {
+    background: #e0334d;
+    box-shadow: 0 6rpx 26rpx rgba(218, 35, 64, 0.6);
+  }
+  36% {
+    background: #f43d57;
+    box-shadow: 0 7rpx 28rpx rgba(238, 44, 72, 0.75);
+  }
+}
+.fav-heart-core::before,
+.fav-heart-core::after {
+  content: ' ';
+  width: 40rpx;
+  height: 40rpx;
+  border-radius: 50%;
+}
+.fav-heart-core::before {
+  left: -20rpx;
+}
+.fav-heart-core::after {
+  top: -20rpx;
+}
+
+/* 扩散光环 */
+.fav-heart-ring {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 84rpx;
+  height: 84rpx;
+  margin: -42rpx 0 0 -42rpx;
+  border-radius: 50%;
+  border: 4rpx solid rgba(255, 90, 110, 0.85);
+  opacity: 0;
+}
+
+/* 飞散粒子 */
+.fav-heart-particle {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 12rpx;
+  height: 12rpx;
+  margin: -6rpx 0 0 -6rpx;
+  border-radius: 50%;
+  background: #ff5a6e;
+  opacity: 0;
+}
+.fav-heart-particle.p1 { background: #ff8095; }
+.fav-heart-particle.p2 { background: #ffb86b; width: 9rpx; height: 9rpx; }
+.fav-heart-particle.p3 { background: #ff5a6e; }
+.fav-heart-particle.p4 { background: #ff8095; width: 9rpx; height: 9rpx; }
+.fav-heart-particle.p5 { background: #ffd0d8; width: 8rpx; height: 8rpx; }
+.fav-heart-particle.p6 { background: #ff5a6e; width: 9rpx; height: 9rpx; }
+
+/* 点燃瞬间 */
+.fav-heart.burst .fav-heart-ring {
+  animation: heart-ring 0.7s ease-out both;
+}
+.fav-heart.burst .fav-heart-particle {
+  animation: heart-particle-fly 0.7s cubic-bezier(0.16, 0.8, 0.35, 1) both;
+}
+.fav-heart.burst .fav-heart-particle.p1 { animation-delay: 0.05s; }
+.fav-heart.burst .fav-heart-particle.p2 { animation-delay: 0.02s; }
+.fav-heart.burst .fav-heart-particle.p3 { animation-delay: 0.08s; }
+.fav-heart.burst .fav-heart-particle.p4 { animation-delay: 0.03s; }
+.fav-heart.burst .fav-heart-particle.p5 { animation-delay: 0.06s; }
+.fav-heart.burst .fav-heart-particle.p6 { animation-delay: 0.04s; }
+
+/* 爱心弹性放大：先猛地放大回弹，再落回微放大的定格 */
+@keyframes heart-pop {
+  0% { transform: scale(0.92); }
+  35% { transform: scale(1.55); }
+  55% { transform: scale(0.98); }
+  75% { transform: scale(1.28); }
+  100% { transform: scale(1.15); }
+}
+
+/* 光环从爱心中心扩散淡出 */
+@keyframes heart-ring {
+  0% { transform: scale(0.4); opacity: 0.9; }
+  100% { transform: scale(2.4); opacity: 0; }
+}
+
+/* 粒子向各自方向飞散（上下左右 + 斜角），先快后慢并淡出 */
+.fav-heart.burst .p1 { --px: 0; --py: -80rpx; }
+.fav-heart.burst .p2 { --px: 56rpx; --py: -58rpx; }
+.fav-heart.burst .p3 { --px: 80rpx; --py: 0; }
+.fav-heart.burst .p4 { --px: 56rpx; --py: 58rpx; }
+.fav-heart.burst .p5 { --px: 0; --py: 80rpx; }
+.fav-heart.burst .p6 { --px: -62rpx; --py: 48rpx; }
+
+@keyframes heart-particle-fly {
+  0% { transform: translate(0, 0) scale(1); opacity: 1; }
+  60% { opacity: 0.9; }
+  100% { transform: translate(var(--px), var(--py)) scale(0.4); opacity: 0; }
 }
 
 .car-mode-song {
+  flex: 1;
   display: flex;
   flex-direction: column;
+  margin-left: 30rpx;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
-
 .car-mode-name {
-  font-size: 32px;
-  font-weight: bold;
-  text-align: center;
+  font-size: 36rpx;
+  font-weight: 600;
+  letter-spacing: 1rpx;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-shadow: 0 2rpx 10rpx rgba(0, 0, 0, 0.4);
 }
 
 .car-mode-singer {
-  font-size: 20px;
-  color: #eee;
+  font-size: 28rpx;
+  letter-spacing: 2rpx;
+  color: rgba(255, 255, 255, 0.78);
+  margin-top: 8rpx;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.car-mode-lrc {
-  font-size: 28px;
-  text-align: left;
-  white-space: pre-wrap;
+/* 行车时钟仪表条：大号时间居左、日期+星期居右 */
+.car-mode-clock {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  padding: 14rpx 32rpx;
+  border-top: 1rpx solid rgba(255, 255, 255, 0.08);
+}
+.clock-time {
+  font-family: "SF Pro Display", "DIN Alternate", "Helvetica Neue", sans-serif;
+  font-size: 42rpx;
+  font-weight: 600;
+  letter-spacing: 2rpx;
+  color: #f5b95a;
+  text-shadow: 0 0 22rpx rgba(240, 184, 96, 0.4);
+  font-variant-numeric: tabular-nums;
+}
+.clock-divider {
+  flex: 1;
+}
+.clock-date-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+.clock-date {
+  font-size: 30rpx;
+  letter-spacing: 1rpx;
+  color: rgba(255, 255, 255, 0.92);
+  font-variant-numeric: tabular-nums;
+}
+.clock-week {
+  margin-top: 4rpx;
+  font-size: 27rpx;
+  letter-spacing: 3rpx;
+  color: #f0b860;
+}
+
+/* 卡片内嵌操作提示行 */
+.car-mode-tips-inline {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  padding: 10rpx 28rpx 14rpx;
+  border-top: 1rpx solid rgba(255, 255, 255, 0.06);
+}
+.tips-inline-text {
+  font-size: 22rpx;
+  letter-spacing: 2rpx;
+  color: rgba(255, 255, 255, 0.48);
+}
+
+/* 播放中的均衡器动效：琥珀渐变音条 + 底部反光基座 */
+.car-mode-eq {
+  position: relative;
+  display: flex;
+  flex-direction: row;
+  align-items: flex-end;
+  height: 48rpx;
+  margin-left: 22rpx;
+  padding: 0 6rpx 8rpx;
+}
+/* 底部反光基座：音条落点的一条渐隐光带 */
+.car-mode-eq::after {
+  content: ' ';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 4rpx;
+  border-radius: 2rpx;
+  background: linear-gradient(90deg, transparent, rgba(240, 184, 96, 0.45), transparent);
+}
+.eq-bar {
+  width: 7rpx;
+  margin-left: 6rpx;
+  border-radius: 4rpx;
+  background: linear-gradient(180deg, #ffd489, #f0a23c);
+  box-shadow: 0 0 12rpx rgba(240, 184, 96, 0.5);
+  transform-origin: 50% 100%;
+  animation: eq-bounce 0.9s cubic-bezier(0.45, 0, 0.55, 1) infinite alternate;
+}
+.eq-bar-1 { height: 20rpx; animation-delay: -0.1s; }
+.eq-bar-2 { height: 40rpx; animation-delay: -0.5s; }
+.eq-bar-3 { height: 28rpx; animation-delay: -0.3s; }
+.eq-bar-4 { height: 44rpx; animation-delay: -0.7s; }
+.eq-bar-5 { height: 24rpx; animation-delay: -0.2s; }
+
+@keyframes eq-bounce {
+  from { transform: scaleY(0.3); opacity: 0.75; }
+  to { transform: scaleY(1); opacity: 1; }
+}
+
+/* ---------- 多行歌词（固定视窗 + 整体平移居中） ---------- */
+.car-lrc-window {
+  flex: 1;
+  min-height: 0;
+  margin-top: 22rpx;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 90rpx, #000 calc(100% - 90rpx), transparent 100%);
+  animation: rise-in 0.7s cubic-bezier(0.22, 0.9, 0.3, 1) both 0.28s;
+}
+
+.car-lrc-list {
+  transition: transform 0.5s cubic-bezier(0.22, 0.9, 0.3, 1);
+  will-change: transform;
+}
+
+.lrc-placeholder {
+  padding: 40rpx 30rpx;
+  font-size: 30rpx;
+  line-height: 1.7;
+  letter-spacing: 2rpx;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+/* 行高固定，保证平移计算的稳定性 */
+.lrc-line {
+  height: 76rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 40rpx;
+  box-sizing: border-box;
+  font-size: 33rpx;
+  letter-spacing: 2rpx;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.55);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  transition: color 0.35s ease, font-size 0.35s ease, text-shadow 0.35s ease;
+}
+
+/* 当前行：白字 + 暖色微光（与道路灯光呼应） */
+.lrc-line.active {
+  color: #ffffff;
+  font-size: 44rpx;
+  font-weight: 600;
+  text-shadow: 0 0 28rpx rgba(240, 184, 96, 0.3), 0 2rpx 12rpx rgba(0, 0, 0, 0.45);
+}
+
+/* 当前行前后各一行：临近高亮，过渡更自然 */
+.lrc-line.near {
+  color: rgba(255, 255, 255, 0.72);
+}
+
+/* ---------- 底部按钮与提示 ---------- */
+.car-back {
+  position: fixed;
+  left: 60rpx;
+  right: 60rpx;
+  bottom: calc(env(safe-area-inset-bottom) + 40rpx);
+  animation: rise-in 0.6s cubic-bezier(0.22, 0.9, 0.3, 1) both 0.42s;
+}
+
+.car-back button {
+  background: linear-gradient(135deg, #e8543f, #c9351f);
+  border: 1rpx solid rgba(255, 120, 90, 0.45);
+  color: #ffffff;
+  border-radius: 999rpx;
+  font-size: 38rpx;
+  font-weight: 600;
+  letter-spacing: 8rpx;
+  text-indent: 8rpx;
+  line-height: 1;
+  padding: 32rpx 0;
+  box-shadow: 0 14rpx 36rpx rgba(201, 53, 31, 0.4), inset 0 1rpx 0 rgba(255, 255, 255, 0.25);
+}
+
+.car-back button:active {
+  background: linear-gradient(135deg, #f26a55, #d8402a);
+  transform: scale(0.97);
+}
+
+.car-back button::after {
+  border: none;
+}
+
+/* 提示圆点（卡片内嵌提示行使用） */
+.tips-dot {
+  width: 10rpx;
+  height: 10rpx;
+  border-radius: 50%;
+  background: rgba(240, 184, 96, 0.9);
+  box-shadow: 0 0 10rpx rgba(240, 184, 96, 0.6);
+  margin-right: 14rpx;
+  animation: dot-pulse 2.2s ease-in-out infinite;
+}
+
+@keyframes dot-pulse {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 1; }
+}
+
+/* ---------- 上滑切歌指示器 ----------
+   滑动进度条 + 文案；到达阈值时整体点亮并放大 */
+.swipe-hint {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: calc(env(safe-area-inset-bottom) + 260rpx);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  opacity: 0;
+  transform: translateY(16rpx) scale(0.9);
+  transition: opacity 0.25s ease, transform 0.25s ease;
+  pointer-events: none;
+  z-index: 40;
+}
+.swipe-hint.show {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+.swipe-hint.ready {
+  transform: translateY(0) scale(1.06);
+}
+
+.swipe-hint-track {
+  width: 220rpx;
+  height: 8rpx;
+  border-radius: 4rpx;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+.swipe-hint-thumb {
+  height: 100%;
+  width: 0;
+  border-radius: 4rpx;
+  background: linear-gradient(90deg, rgba(240, 184, 96, 0.6), #f5b95a);
+  box-shadow: 0 0 12rpx rgba(245, 185, 90, 0.5);
+  transition: width 0.12s linear;
+}
+.swipe-hint.ready .swipe-hint-thumb {
+  width: 100%;
+}
+
+.swipe-hint-label {
+  margin-top: 14rpx;
+  font-size: 22rpx;
+  letter-spacing: 4rpx;
+  color: rgba(255, 255, 255, 0.55);
+  transition: color 0.2s ease, text-shadow 0.2s ease;
+}
+.swipe-hint.ready .swipe-hint-label {
+  color: #ffd9a0;
+  font-weight: 600;
+  text-shadow: 0 0 16rpx rgba(240, 184, 96, 0.5);
+}
+
+/* ---------- 切歌确认卡片 ----------
+   “换挡”式提示：光带掠过 + 缩放浮现 */
+.pass-toast {
+  position: fixed;
+  left: 50%;
+  top: 42%;
+  width: 300rpx;
+  padding: 44rpx 0 40rpx;
+  margin-left: -150rpx;
+  text-align: center;
+  background: rgba(10, 16, 34, 0.55);
+  border: 1rpx solid rgba(240, 184, 96, 0.35);
+  border-radius: 32rpx;
+  backdrop-filter: blur(30rpx);
+  -webkit-backdrop-filter: blur(30rpx);
+  box-shadow: 0 24rpx 60rpx rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  transform: translateX(-0%) translateY(24rpx) scale(0.82);
+  transition: opacity 0.3s ease, transform 0.3s cubic-bezier(0.22, 1.4, 0.36, 1);
+  pointer-events: none;
+  z-index: 50;
+}
+.pass-toast.show {
+  opacity: 1;
+  transform: translateX(0) translateY(0) scale(1);
+}
+
+.pass-toast-text {
+  font-size: 44rpx;
+  font-weight: 600;
+  letter-spacing: 16rpx;
+  text-indent: 16rpx;
+  color: #ffffff;
+  text-shadow: 0 0 24rpx rgba(240, 184, 96, 0.45);
+}
+
+.pass-toast-sub {
+  margin-top: 10rpx;
+  font-size: 19rpx;
+  letter-spacing: 6rpx;
+  color: rgba(240, 184, 96, 0.8);
+}
+
+/* 卡片内掠过的光带 */
+.pass-toast-glow {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 40%;
+  background: linear-gradient(105deg, transparent, rgba(255, 224, 168, 0.16), transparent);
+  transform: translateX(-100%);
+}
+.pass-toast.show .pass-toast-glow {
+  animation: glow-sweep 0.7s ease-out 0.1s;
+}
+
+@keyframes glow-sweep {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(350%); }
 }

@@ -1,38 +1,123 @@
-<view wx:if="{{bbbug}}">
-  <view class="searchbox">
-    <form bindsubmit="doSearchSong">
-      <view class="weui-cells weui-cells_form"
-        style="margin:0;border-radius:0;background-color:transparent;padding:8px;">
-        <view class="weui-cell" style="padding: 5px 10px;">
-          <view class="weui-cell__hd">
-            <i class="iconfont icon-search" style="font-size: 24px;"></i>
-          </view>
-          <view class="weui-cell__bd">
-            <input class="weui-input" type="text" confirm-type="search" bindconfirm="doSearchSong"
-              placeholder="输入歌手/歌名/专辑搜索" focus="true"></input>
-          </view>
-        </view>
+<view wx:if="{{bbbug}}" class="page">
+
+  <!-- ===== 搜索头部：吸顶 ===== -->
+  <view class="search-header">
+    <!-- 音乐源分段控件 -->
+    <view class="source-seg">
+      <view wx:for="{{sources}}" wx:key="value"
+        class="source-seg-item {{source==item.value?'active':''}}"
+        data-source="{{item.value}}" bindtap="selectSource">
+        <view class="source-seg-dot {{source==item.value?'show':''}}"></view>
+        {{item.label}}
+      </view>
+      <view class="source-seg-thumb {{source=='netease'?'pos-0':source=='tencent'?'pos-1':'pos-2'}}"></view>
+    </view>
+
+    <!-- 搜索输入 -->
+    <form class="search-bar-wrap" bindsubmit="doSearchSong">
+      <view class="search-bar">
+        <text class="search-bar-icon">⌕</text>
+        <input class="search-bar-input" name="keyword" type="text" confirm-type="search"
+          bindconfirm="doSearchSong" focus="{{autoFocus}}"
+          placeholder="{{searchType=='song'?'输入歌手 / 歌名 / 专辑搜索':searchType=='playlist'?(source=='tencent'?'输入QQ音乐歌单名称搜索':'输入网易云歌单名称搜索'):searchType=='userPlaylists'?'输入QQ号获取用户歌单':searchType=='radio'?'输入电台名称、主播或节目关键词':'输入网易云用户名搜索'}}"
+          placeholder-class="search-bar-placeholder" />
       </view>
     </form>
-  </view>
-  <view wx:if="{{songList.length==0}}">
-    <view class="tipImage">
-      <image class="img" src="/res/image/alert.png" />
+
+    <!-- 搜索类型标签 -->
+    <view class="type-chips" wx:if="{{searchTypes.length > 1}}">
+      <view wx:for="{{searchTypes}}" wx:key="value"
+        class="type-chip {{searchType==item.value?'active':''}}"
+        data-search-type="{{item.value}}" bindtap="selectSearchType">{{item.label}}</view>
     </view>
-    <view class="tipText">没有搜索到歌曲呀,换个关键词试试吧</view>
   </view>
-  <view class="weui-panel weui-panel_access songList" wx:if="{{songList.length>0}}">
-    <view class="weui-panel__bd">
-      <view class="weui-media-box weui-media-box_appmsg" wx:for="{{songList}}" bindtap="showMenu" mark:item="{{item}}">
+
+  <!-- ===== 热门提示词（仅歌曲类型 + 未搜索时）===== -->
+  <view class="prompts" wx:if="{{searchType=='song' && !hasSearched && searchPrompts.length}}">
+    <view class="prompts-title">
+      <view class="prompts-flame"></view>
+      <text>大家都在搜</text>
+    </view>
+    <view class="prompts-list">
+      <view class="prompt-chip" wx:for="{{searchPrompts}}" wx:key="*this"
+        bindtap="tapSearchPrompt" mark:prompt="{{item}}"
+        style="animation-delay: {{index * 50}}ms">{{item}}</view>
+    </view>
+  </view>
+
+  <!-- ===== 空状态（按搜索类型切换文案）===== -->
+  <view class="empty" wx:if="{{hasSearched && (
+      ((searchType=='song' || searchType=='radio') && songList.length==0) ||
+      (searchType=='playlist' && playlistList.length==0) ||
+      (searchType=='userPlaylists' && playlistList.length==0) ||
+      (searchType=='user' && userList.length==0))}}">
+    <view class="empty-notes">
+      <view class="empty-note">♪</view>
+      <view class="empty-note mid">♫</view>
+      <view class="empty-note late">♩</view>
+    </view>
+    <view class="empty-title">{{searchType=='song' ? '没有搜索到歌曲' : searchType=='radio' ? '没有找到相关电台节目' : (searchType=='playlist' || searchType=='userPlaylists') ? '没有找到相关歌单' : '没有找到相关用户'}}</view>
+    <view class="empty-desc">换个关键词试试吧</view>
+  </view>
+
+  <!-- ===== 歌曲结果 ===== -->
+  <view class="results" wx:if="{{(searchType=='song' || searchType=='radio') && songList.length>0}}">
+    <view class="results-label">{{searchType=='radio'?'网易电台':'歌曲'}} <text class="results-count">{{songList.length}}</text></view>
+    <view class="card">
+      <view class="weui-media-box weui-media-box_appmsg song-card result-row" wx:for="{{songList}}" wx:key="mid"
+        bindtap="showMenu" mark:item="{{item}}" style="animation-delay: {{index * 40}}ms">
         <view class="weui-media-box__hd">
-          <image class="weui-media-box__thumb song_image" src="{{item.pic}}" alt="" mode="widthFix"></image>
+          <image class="result-cover" src="{{item.pic || '/res/image/nohead.jpg'}}" alt="" mode="aspectFill"
+            binderror="onSongPicError" data-index="{{index}}"></image>
         </view>
         <view class="weui-media-box__bd">
           <view class="weui-media-box__title">{{item.name}}</view>
           <view class="weui-media-box__desc">
-            {{item.singer}}<span wx:if="{{item.album}}" style="margin-left: 3px;">({{item.album}})</span>
+            {{item.singer}}<text wx:if="{{item.album}}" class="song-album">({{item.album}})</text>
           </view>
+          <view class="result-meta" wx:if="{{searchType=='radio'}}">网易电台节目</view>
         </view>
+        <view class="result-arrow">›</view>
+      </view>
+    </view>
+  </view>
+
+  <!-- ===== 歌单结果 ===== -->
+  <view class="results" wx:if="{{(searchType=='playlist' || searchType=='userPlaylists') && playlistList.length>0}}">
+    <view class="results-label">{{searchType=='userPlaylists'?'用户歌单':'歌单'}} <text class="results-count">{{playlistList.length}}</text></view>
+    <view class="card">
+      <view class="weui-media-box weui-media-box_appmsg playlist-card result-row" wx:for="{{playlistList}}" wx:key="id"
+        bindtap="openPlaylist" mark:item="{{item}}" style="animation-delay: {{index * 40}}ms">
+        <view class="weui-media-box__hd">
+          <image class="result-cover" src="{{item.cover || '/res/image/nohead.jpg'}}" mode="aspectFill"
+            binderror="onPlaylistPicError" data-index="{{index}}"></image>
+        </view>
+        <view class="weui-media-box__bd">
+          <view class="weui-media-box__title">{{item.name}}</view>
+          <view class="weui-media-box__desc">{{item.creatorName || item.creator || (source=='tencent'?'QQ音乐用户':'网易云用户')}} · {{item.trackCount || 0}} 首</view>
+          <view class="result-meta" wx:if="{{item.playCount}}">播放量 {{item.playCount}}</view>
+        </view>
+        <view class="result-arrow">›</view>
+      </view>
+    </view>
+  </view>
+
+  <!-- ===== 用户结果 ===== -->
+  <view class="results" wx:if="{{searchType=='user' && userList.length>0}}">
+    <view class="results-label">用户 <text class="results-count">{{userList.length}}</text></view>
+    <view class="card">
+      <view class="weui-media-box weui-media-box_appmsg user-card result-row" wx:for="{{userList}}" wx:key="id"
+        bindtap="openUserPlaylists" mark:item="{{item}}" style="animation-delay: {{index * 40}}ms">
+        <view class="weui-media-box__hd">
+          <image class="user-avatar" src="{{item.avatar || '/res/image/nohead.jpg'}}" mode="aspectFill"
+            binderror="onUserAvatarError" data-index="{{index}}"></image>
+        </view>
+        <view class="weui-media-box__bd">
+          <view class="weui-media-box__title">{{item.name}}</view>
+          <view class="weui-media-box__desc user-signature">{{item.signature || '这个用户还没有填写签名'}}</view>
+          <view class="result-meta">点击查看公开歌单</view>
+        </view>
+        <view class="result-arrow">›</view>
       </view>
     </view>
   </view>

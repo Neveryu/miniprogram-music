@@ -1,21 +1,158 @@
-<view class="car-mode" bindlongpress="longPressPassTheSong" style="background-image: url({{songInfo.song.pic}})">
-  <view class="car-mode-player" wx:if="{{songInfo}}" style="top: {{top}}">
-    <view class="car-mode-img">
-      <image src="{{songInfo.song.pic}}" bindtap="tapToAddSong" />
+<view class="car-mode" bindtouchstart="onTouchStart" bindtouchmove="onTouchMove" bindtouchend="onTouchEnd" bindtouchcancel="onTouchEnd">
+  <!-- 深夜巡航场景 -->
+  <view class="car-scene">
+    <view class="nav-nebula"></view>
+    <!-- 星空 -->
+    <view class="nav-star s1"></view>
+    <view class="nav-star s2"></view>
+    <view class="nav-star s3"></view>
+    <view class="nav-star s4"></view>
+    <view class="nav-star s5"></view>
+    <view class="nav-star s6"></view>
+    <view class="nav-star s7"></view>
+    <view class="nav-star s8"></view>
+    <view class="nav-star s9"></view>
+    <view class="nav-star s10"></view>
+    <view class="nav-meteor"></view>
+    <view class="nav-moon"></view>
+    <!-- 远景城市（更暗更高） -->
+    <view class="nav-cityline nav-cityline-far">
+      <view class="nav-fb" style="left: 3%; height: 196rpx;"></view>
+      <view class="nav-fb" style="left: 13%; height: 224rpx;"></view>
+      <view class="nav-fb" style="left: 34%; height: 168rpx;"></view>
+      <view class="nav-fb" style="left: 49%; height: 208rpx;"></view>
+      <view class="nav-fb" style="left: 78%; height: 178rpx;"></view>
+      <view class="nav-fb" style="left: 88%; height: 216rpx;"></view>
     </view>
-    <view class="car-mode-song">
-      <view class="car-mode-name">{{songInfo.song.name}} - {{songInfo.song.singer}}</view>
-      <!-- <view class="car-mode-singer">点歌人: (ID:{{songInfo.user.user_id}}){{helper.urldecode(songInfo.user.user_name)}}
-      </view> -->
-      <view class="car-mode-lrc">
-        {{lrcString}}    
+    <!-- 近景城市剪影 -->
+    <view class="nav-cityline">
+      <view class="nav-bldg" style="left: 1%; height: 90rpx;"></view>
+      <view class="nav-bldg nav-bldg-beacon" style="left: 8%; height: 150rpx;"></view>
+      <view class="nav-bldg" style="left: 16%; height: 66rpx;"></view>
+      <view class="nav-bldg" style="left: 22%; height: 108rpx;"></view>
+      <view class="nav-bldg" style="left: 56%; height: 78rpx;"></view>
+      <view class="nav-bldg" style="left: 63%; height: 128rpx;"></view>
+      <view class="nav-bldg nav-bldg-beacon" style="left: 71%; height: 96rpx;"></view>
+      <view class="nav-bldg" style="left: 90%; height: 140rpx;"></view>
+      <view class="nav-bldg" style="left: 96%; height: 70rpx;"></view>
+    </view>
+    <!-- 路两侧地面 -->
+    <view class="nav-ground nav-ground-l"></view>
+    <view class="nav-ground nav-ground-r"></view>
+    <!-- 汇聚到地平线的梯形路面 -->
+    <view class="nav-road">
+      <view class="nav-edge nav-edge-l"></view>
+      <view class="nav-edge nav-edge-r"></view>
+    </view>
+    <!-- 流动的车道虚线（远处小、近处大） -->
+    <view class="nav-dash nav-dash-1 a"></view>
+    <view class="nav-dash nav-dash-1 b"></view>
+    <view class="nav-dash nav-dash-1 c"></view>
+    <view class="nav-dash nav-dash-1 d"></view>
+    <view class="nav-dash nav-dash-2 a"></view>
+    <view class="nav-dash nav-dash-2 b"></view>
+    <view class="nav-dash nav-dash-2 c"></view>
+    <view class="nav-dash nav-dash-2 d"></view>
+    <!-- 路侧行道树 -->
+    <view class="nav-tree tree-l1"><view class="tree-trunk"></view><view class="tree-crown"></view></view>
+    <view class="nav-tree tree-l2"><view class="tree-trunk"></view><view class="tree-crown"></view></view>
+    <view class="nav-tree tree-l3"><view class="tree-trunk"></view><view class="tree-crown"></view></view>
+    <view class="nav-tree tree-r1"><view class="tree-trunk"></view><view class="tree-crown"></view></view>
+    <view class="nav-tree tree-r2"><view class="tree-trunk"></view><view class="tree-crown"></view></view>
+    <view class="nav-tree tree-r3"><view class="tree-trunk"></view><view class="tree-crown"></view></view>
+    <!-- 路侧路灯（暖光） -->
+    <view class="nav-lamp lamp-l1"><view class="lamp-glow"></view></view>
+    <view class="nav-lamp lamp-l2"><view class="lamp-glow"></view></view>
+    <view class="nav-lamp lamp-r1"><view class="lamp-glow"></view></view>
+    <view class="nav-lamp lamp-r2"><view class="lamp-glow"></view></view>
+    <!-- 灯下光池（落在路面上） -->
+    <view class="nav-pool pool-l1"></view>
+    <view class="nav-pool pool-l2"></view>
+    <view class="nav-pool pool-r1"></view>
+    <view class="nav-pool pool-r2"></view>
+    <!-- 远方对向车灯 -->
+    <view class="nav-far-car"><view class="far-dot far-dot-l"></view><view class="far-dot far-dot-r"></view></view>
+    <!-- 行驶中的小车：拖拽时沿路面推进，松手切歌后驶向建筑底部，新车从底部驶入 -->
+    <view class="nav-car {{carLeaving ? 'leaving' : ''}} {{carEntering ? 'entering' : ''}}" style="{{swiping && !carLeaving && !carEntering && dragOffset > 0 ? 'transform: translateY(' + (-dragOffset * 155) + 'rpx) scaleY(0.86) scale(' + (1 - dragOffset * 0.24) + '); opacity: ' + (1 - dragOffset * 0.4) + '; animation: none;' : ''}}">
+      <view class="nav-car-shadow"></view>
+      <view class="nav-car-lightcone nav-car-lightcone-l"></view>
+      <view class="nav-car-lightcone nav-car-lightcone-r"></view>
+      <view class="nav-car-body">
+        <view class="nav-car-hood"></view>
+        <view class="nav-car-windshield"></view>
+        <view class="nav-car-roof"></view>
+        <view class="nav-car-rearwindow"></view>
+        <view class="nav-car-mirror nav-car-mirror-l"></view>
+        <view class="nav-car-mirror nav-car-mirror-r"></view>
+        <view class="nav-car-headlight"></view>
+        <view class="nav-car-taillight"></view>
+      </view>
+    </view>
+    <view class="nav-vignette"></view>
+  </view>
+  <view class="car-mode-player" wx:if="{{songInfo && songInfo.song}}" style="top: {{top}}">
+    <view class="car-mode-header">
+      <view class="car-mode-header-main">
+        <view class="car-mode-img" bindtap="onTapFav">
+          <image src="{{picError ? '/res/image/nohead.jpg' : songInfo.song.pic}}" binderror="onPicError" />
+          <!-- 收藏爱心：点击后点亮放大 -->
+          <view class="fav-heart {{favBurst ? 'burst' : ''}}">
+            <view class="fav-heart-core"></view>
+            <view class="fav-heart-ring"></view>
+            <view class="fav-heart-particle p1"></view>
+            <view class="fav-heart-particle p2"></view>
+            <view class="fav-heart-particle p3"></view>
+            <view class="fav-heart-particle p4"></view>
+            <view class="fav-heart-particle p5"></view>
+            <view class="fav-heart-particle p6"></view>
+          </view>
+        </view>
+        <view class="car-mode-song">
+          <view class="car-mode-name">{{songInfo.song.name}}</view>
+          <view class="car-mode-singer">{{songInfo.song.singer}}</view>
+        </view>
+        <view class="car-mode-eq">
+          <view class="eq-bar eq-bar-1"></view>
+          <view class="eq-bar eq-bar-2"></view>
+          <view class="eq-bar eq-bar-3"></view>
+          <view class="eq-bar eq-bar-4"></view>
+          <view class="eq-bar eq-bar-5"></view>
+        </view>
+      </view>
+      <view class="car-mode-clock">
+        <text class="clock-time">{{timeText}}</text>
+        <view class="clock-divider"></view>
+        <view class="clock-date-wrap">
+          <text class="clock-date">{{dateText}}</text>
+          <text class="clock-week">{{weekText}}</text>
+        </view>
+      </view>
+      <view class="car-mode-tips-inline">
+        <view class="tips-dot"></view>
+        <text class="tips-inline-text">点击爱心收藏 · 上滑切歌 · 消息自动朗读</text>
+      </view>
+    </view>
+    <view class="car-lrc-window">
+      <view class="car-lrc-list" style="transform: translateY({{lrcTranslate}}px)">
+        <view wx:if="{{lrcList.length == 0}}" class="lrc-placeholder">{{lrcString || '暂无歌词'}}</view>
+        <view wx:for="{{lrcList}}" wx:key="time" class="lrc-line {{index == lrcIndex ? 'active' : (index == lrcIndex - 1 || index == lrcIndex + 1) ? 'near' : ''}}">{{item.lineLyric}}</view>
       </view>
     </view>
   </view>
   <view class="car-back">
-    <button type="warn" bindtap="backCar">退 出 / 返 回</button>
+    <button bindtap="backCar">退 出 驾 驶</button>
   </view>
-  <view class="car-mode-tips">
-    点击歌曲图片收藏歌曲，长按切歌，我们会为你朗读消息，但为了你的驾驶安全，暂不支持发送消息。
+  <!-- 上滑切歌指示器 -->
+  <view class="swipe-hint {{swiping ? 'show' : ''}} {{passReady ? 'ready' : ''}}">
+    <view class="swipe-hint-track">
+      <view class="swipe-hint-thumb"></view>
+    </view>
+    <view class="swipe-hint-label">{{passReady ? '松手切歌' : '上滑切歌'}}</view>
+  </view>
+  <!-- 切歌确认卡片 -->
+  <view class="pass-toast {{passTriggered ? 'show' : ''}}">
+    <view class="pass-toast-glow"></view>
+    <view class="pass-toast-text">切 歌</view>
+    <view class="pass-toast-sub">NEXT SONG</view>
   </view>
 </view>

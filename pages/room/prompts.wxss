@@ -1,0 +1,302 @@
+/* ========== 搜索提示词页面 ==========
+   配色策略：页面背景和卡片用 CSS 变量定义，亮/暗模式各一套值，
+   文字颜色全部引用变量——彻底解决深色模式下文字不可见的问题。 */
+
+page {
+  --bg: #f3f5f9;
+  --card: #ffffff;
+  --text: #222831;
+  --text-secondary: #6b7280;
+  --text-tertiary: #9ca3af;
+  --line: #eef0f4;
+  --accent: #ff4d6d;
+  --accent-soft: rgba(255, 77, 109, 0.08);
+  --input-bg: #f3f5f9;
+  background: var(--bg);
+}
+
+@media (prefers-color-scheme: dark) {
+  page {
+    --bg: #12151c;
+    --card: #1c2028;
+    --text: #e8eaf0;
+    --text-secondary: #9aa1ae;
+    --text-tertiary: #5d6470;
+    --line: #2a2f3a;
+    --accent: #ff6b81;
+    --accent-soft: rgba(255, 107, 129, 0.12);
+    --input-bg: #12151c;
+  }
+}
+
+.page {
+  min-height: 100vh;
+  padding: 16px 16px calc(env(safe-area-inset-bottom) + 32px);
+  box-sizing: border-box;
+  background: var(--bg);
+}
+
+/* ========== 顶部说明区 ========== */
+.hero {
+  display: flex;
+  align-items: center;
+  padding: 18px 16px;
+  border-radius: 16px;
+  background: var(--card);
+}
+
+.hero-icon {
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  line-height: 44px;
+  text-align: center;
+  border-radius: 12px;
+  font-size: 22px;
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.hero-text {
+  flex: 1;
+  min-width: 0;
+  margin-left: 14px;
+}
+
+.hero-title {
+  color: var(--text);
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.hero-desc {
+  margin-top: 4px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.hero-count {
+  flex: 0 0 auto;
+  margin-left: 12px;
+  color: var(--accent);
+  font-size: 22px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.hero-count-unit {
+  color: var(--text-tertiary);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+/* ========== 输入区 ========== */
+.composer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.composer-field {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  height: 44px;
+  padding: 0 12px;
+  border-radius: 12px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  transition: border-color 0.2s;
+}
+
+.composer-field.has-text {
+  border-color: var(--accent);
+}
+
+.composer-icon {
+  flex: 0 0 auto;
+  margin-right: 8px;
+  color: var(--text-tertiary);
+  font-size: 16px;
+}
+
+.composer-field.has-text .composer-icon {
+  color: var(--accent);
+}
+
+.composer-input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.composer-placeholder {
+  color: var(--text-tertiary);
+}
+
+.composer-clear {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  line-height: 18px;
+  text-align: center;
+  border-radius: 50%;
+  color: var(--text-tertiary);
+  font-size: 13px;
+  background: var(--line);
+  overflow: hidden;
+}
+
+.composer-action {
+  flex: 0 0 auto;
+  height: 44px;
+  line-height: 44px;
+  padding: 0 20px;
+  border-radius: 12px;
+  color: var(--text-tertiary);
+  font-size: 14px;
+  font-weight: 600;
+  background: var(--card);
+  border: 1px solid var(--line);
+  transition: all 0.2s;
+}
+
+.composer-action.active {
+  color: #fff;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+/* ========== 列表区 ========== */
+.list {
+  margin-top: 14px;
+  border-radius: 16px;
+  background: var(--card);
+  overflow: hidden;
+}
+
+.list-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding: 0 12px 0 16px;
+  min-height: 54px;
+  animation: item-enter 0.3s ease both;
+}
+
+.list-item::after {
+  content: '';
+  position: absolute;
+  left: 16px;
+  right: 12px;
+  bottom: 0;
+  height: 1px;
+  background: var(--line);
+}
+
+.list-item:last-child::after {
+  display: none;
+}
+
+.list-index {
+  flex: 0 0 26px;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.list-text {
+  flex: 1;
+  min-width: 0;
+  padding: 0 10px;
+  color: var(--text);
+  font-size: 15px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.list-remove {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+}
+
+.list-remove:active {
+  background: var(--accent-soft);
+}
+
+.list-remove-icon {
+  color: var(--text-tertiary);
+  font-size: 18px;
+  line-height: 1;
+}
+
+/* ========== 空状态 ========== */
+.empty {
+  margin-top: 25%;
+  text-align: center;
+}
+
+.empty-note {
+  height: 48px;
+  position: relative;
+}
+
+.empty-note-staff {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  color: var(--text-tertiary);
+  font-size: 22px;
+  animation: note-float 2.4s ease-in-out infinite;
+}
+
+.empty-note-staff.delayed {
+  margin-left: -34px;
+  animation-delay: 0.8s;
+}
+
+.empty-note-staff.more-delayed {
+  margin-left: 22px;
+  animation-delay: 1.6s;
+}
+
+.empty-title {
+  margin-top: 6px;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.empty-desc {
+  margin-top: 6px;
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+/* ========== 动画 ========== */
+@keyframes item-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes note-float {
+  0%, 100% { transform: translateY(0); opacity: 0.5; }
+  50% { transform: translateY(-8px); opacity: 1; }
+}

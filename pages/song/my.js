@@ -12,7 +12,8 @@ Component({
     songList: [],
     room_id: 0,
     page: 1,
-    isLoading: false
+    isLoading: false,
+    hasMore: true
   },
   /**
    * 组件的方法列表
@@ -31,12 +32,19 @@ Component({
       this.getSongList()
     },
     onPullDownRefresh() {
-      this.page = 1
+      this.data.page = 1
+      this.data.hasMore = true
       this.getSongList()
       wx.stopPullDownRefresh()
     },
+    // 封面图加载失败时回退本地占位图
+    onSongPicError(e) {
+      this.setData({
+        [`songList[${e.currentTarget.dataset.index}].pic`]: '/res/image/nohead.jpg'
+      })
+    },
     onReachBottom() {
-      if (!this.data.isLoading) {
+      if (!this.data.isLoading && this.data.hasMore) {
         this.data.page++
         this.getSongList()
       }
@@ -57,13 +65,17 @@ Component({
           if (this.data.page == 1) {
             songList = []
           }
-          songList = songList.concat(res.data)
+          songList = songList.concat(res.data || [])
+          this.data.hasMore = (res.data || []).length >= 30
           this.setData({
             songList: songList
           })
           this.data.isLoading = false
         },
         error: () => {
+          if (this.data.page > 1) {
+            this.data.page--
+          }
           this.data.isLoading = false
         }
       })
@@ -84,6 +96,7 @@ Component({
                 loading: "点歌中",
                 data: {
                   mid: song.mid,
+                  source: song.source,
                   song: song,
                   room_id: app.globalData.roomInfo.room_id
                 },
@@ -101,11 +114,11 @@ Component({
                 loading: '移除中',
                 data: {
                   mid: song.mid,
+                  source: song.source,
                   room_id: app.globalData.roomInfo.room_id
                 },
                 success: (res) => {
-                  // todo
-                  // 这里会造成歌单重复
+                  this.data.page = 1
                   this.getSongList()
                   wx.showToast({
                     title: '移除成功'
@@ -118,11 +131,13 @@ Component({
                 url: 'song/playSong',
                 data: {
                   mid: song.mid,
+                  source: song.source,
                   song: song,
                   room_id: app.globalData.roomInfo.room_id
                 },
                 loading: '播放中',
                 success: (res) => {
+                  this.data.page = 1
                   this.getSongList()
                   wx.showToast({
                     title: '播放成功'

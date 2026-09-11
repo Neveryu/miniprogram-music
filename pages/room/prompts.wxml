@@ -1,0 +1,44 @@
+<view class="page">
+  <!-- 顶部说明区 -->
+  <view class="hero">
+    <view class="hero-icon">♪</view>
+    <view class="hero-text">
+      <view class="hero-title">搜索提示词</view>
+      <view class="hero-desc">出现在搜索点歌页的大家正在找，房间成员可共同维护</view>
+    </view>
+    <view class="hero-count">{{prompts.length}}<text class="hero-count-unit"> / 20</text></view>
+  </view>
+
+  <!-- 输入区 -->
+  <view class="composer">
+    <view class="composer-field {{input ? 'has-text' : ''}}">
+      <text class="composer-icon">＋</text>
+      <input class="composer-input" value="{{input}}" bindinput="inputChanged" bindconfirm="addPrompt"
+        placeholder="输入提示词，回车快速添加" placeholder-class="composer-placeholder" maxlength="30" confirm-type="done" />
+      <text class="composer-clear" wx:if="{{input}}" bindtap="clearInput">×</text>
+    </view>
+    <view class="composer-action {{input ? 'active' : ''}}" bindtap="addPrompt">添加</view>
+  </view>
+
+  <!-- 列表区 -->
+  <view class="list" wx:if="{{prompts.length > 0}}">
+    <view class="list-item" wx:for="{{prompts}}" wx:key="*this" style="animation-delay: {{index * 60}}ms">
+      <view class="list-index">{{index + 1}}</view>
+      <text class="list-text">{{item}}</text>
+      <view class="list-remove" bindtap="removePrompt" mark:index="{{index}}">
+        <text class="list-remove-icon">×</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- 空状态 -->
+  <view class="empty" wx:if="{{prompts.length == 0}}">
+    <view class="empty-note">
+      <view class="empty-note-staff">♪</view>
+      <view class="empty-note-staff delayed">♫</view>
+      <view class="empty-note-staff more-delayed">♩</view>
+    </view>
+    <view class="empty-title">还没有提示词</view>
+    <view class="empty-desc">添加几个关键词，让大家快速点歌</view>
+  </view>
+</view>

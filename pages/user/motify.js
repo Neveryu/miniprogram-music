@@ -10,6 +10,7 @@ Component({
   data: {
     userInfo: false,
     user_head: '',
+    user_head_preview: '',
     user_sex: 0,
     sexList: [{
       id: 0,
@@ -17,6 +18,9 @@ Component({
     }, {
       id: 1,
       name: '男生'
+    }, {
+      id: 2,
+      name: '未设置'
     }]
   },
   /**
@@ -53,7 +57,8 @@ Component({
       }).then((uploadResult) => {
         wx.hideLoading()
         this.setData({
-          user_head: uploadResult.fileID
+          user_head: uploadResult.fileID,
+          user_head_preview: avatarUrl
         })
       }).catch((error) => {
         wx.hideLoading()
@@ -62,22 +67,6 @@ Component({
           title: '微信头像上传失败',
           icon: 'none'
         })
-      })
-    },
-    logout() {
-      wx.showModal({
-        title: '退出登录',
-        content: '退出后需要重新填写资料完成微信登录。',
-        success: (res) => {
-          if (!res.confirm) {
-            return
-          }
-          wx.removeStorageSync('musicAppLoggedIn')
-          app.globalData.userInfo = null
-          const eventChannel = this.getOpenerEventChannel()
-          eventChannel.emit('logoutSuccess')
-          wx.reLaunch({ url: '/pages/index/index' })
-        }
       })
     },
     doSubmit(e) {
@@ -110,7 +99,15 @@ Component({
           this.setData({
             userInfo: res.data,
             user_sex: res.data.user_sex,
-            user_head: res.data.user_head
+            user_head: res.data.user_head,
+            user_head_preview: /^cloud:\/\//i.test(res.data.user_head || '') ? '' : res.data.user_head
+          })
+          app.resolveCloudFileUrl(res.data.user_head).then((url) => {
+            if (url) {
+              this.setData({ user_head_preview: url })
+            }
+          }).catch((error) => {
+            console.error('[ProfileAvatar]', error)
           })
         }
       })

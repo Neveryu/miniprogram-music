@@ -69,6 +69,20 @@ movable-view image {
   border-radius: 100%;
 }
 
+.music-cover-playing {
+  animation: musicCoverRotate 18s linear infinite;
+}
+
+@keyframes musicCoverRotate {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .bbbug_player_tips {
   text-align: center;
   font-size: 14px;
@@ -676,6 +690,69 @@ movable-view image {
 
 .bbbug_history .bbbug_item .bbbug_content .bbbug_voice.playing .iconfont {
   color: #07c160;
+  animation: voiceSoundPulse 1.1s ease-in-out infinite;
+}
+
+.bbbug_voice_wave {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  width: 16px;
+  height: 18px;
+}
+
+.bbbug_voice_wave_bar {
+  display: block;
+  width: 3px;
+  height: 6px;
+  border-radius: 2px;
+  background-color: #07c160;
+  transform-origin: center;
+  animation: voiceWave 0.8s ease-in-out infinite;
+}
+
+.bbbug_voice_wave_bar.bar-one {
+  animation-delay: -0.2s;
+}
+
+.bbbug_voice_wave_bar.bar-two {
+  height: 12px;
+  animation-delay: -0.4s;
+}
+
+.bbbug_voice_wave_bar.bar-three {
+  animation-delay: -0.6s;
+}
+
+@keyframes voiceWave {
+  0%,
+  100% {
+    transform: scaleY(0.45);
+    opacity: 0.55;
+  }
+
+  50% {
+    transform: scaleY(1.25);
+    opacity: 1;
+  }
+}
+
+@keyframes voiceSoundPulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+
+  50% {
+    transform: scale(1.12);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bbbug_history .bbbug_item .bbbug_content .bbbug_voice.playing .iconfont,
+  .bbbug_voice_wave_bar {
+    animation: none;
+  }
 }
 
 .bbbug_scroll_button {

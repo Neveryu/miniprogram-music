@@ -1,52 +1,380 @@
-/* pages/song/select.wxss */
-.searchbox {
-  margin: 10px;
-  background-color: white;
-  border: none;
-  margin-bottom: 10px;
-  border-radius: 10px;
+/* ========== 搜索点歌页面 ==========
+   配色走 CSS 变量，亮/暗模式整组切换，避免深色模式下文字不可见。
+   结果行沿用 weui-media-box 结构（标题/描述样式来自 weui），
+   封面、箭头、右侧让位与前几次对齐的规格保持一致。 */
+
+page {
+  --bg: #f3f5f9;
+  --card: #ffffff;
+  --text: #222831;
+  --text-secondary: #6b7280;
+  --text-tertiary: #9ca3af;
+  --line: #eef0f4;
+  --accent: #ff4d6d;
+  --accent-grad: linear-gradient(135deg, #ff4d6d, #ff7a59);
+  --accent-soft: rgba(255, 77, 109, 0.08);
+  --chip-bg: #ffffff;
+  --seg-track: #e9edf3;
+  background: var(--bg);
 }
 
-.songList {
-  margin: 10px;
-  margin-bottom: constant(safe-area-inset-bottom);
-  margin-bottom: env(safe-area-inset-bottom);
-  border: none;
-  border-radius: 10px;
+@media (prefers-color-scheme: dark) {
+  page {
+    --bg: #12151c;
+    --card: #1c2028;
+    --text: #e8eaf0;
+    --text-secondary: #9aa1ae;
+    --text-tertiary: #5d6470;
+    --line: #2a2f3a;
+    --accent: #ff6b81;
+    --accent-grad: linear-gradient(135deg, #ff6b81, #ff9270);
+    --accent-soft: rgba(255, 107, 129, 0.12);
+    --chip-bg: #1c2028;
+    --seg-track: #242935;
+  }
 }
 
-.number {
-  font-size: 16px;
-  font-weight: bolder;
-  color: #ff4500;
+.page {
+  min-height: 100vh;
+  padding-bottom: calc(env(safe-area-inset-bottom) + 24px);
+  background: var(--bg);
+}
+
+/* ========== 搜索头部（吸顶） ========== */
+.search-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  padding: 10px 16px 12px;
+  background: var(--bg);
+  /* 底部渐隐接缝，滚动时与内容自然过渡 */
+  box-shadow: 0 1px 0 var(--line);
+}
+
+/* 音乐源分段控件：胶囊滑块 */
+.source-seg {
+  position: relative;
+  display: flex;
+  padding: 3px;
+  border-radius: 22px;
+  background: var(--seg-track);
+}
+
+.source-seg-item {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  height: 34px;
+  line-height: 34px;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  transition: color 0.25s;
+}
+
+.source-seg-item.active {
+  color: #fff;
+  font-weight: 600;
+}
+
+.source-seg-dot {
+  display: inline-block;
+  width: 4px;
+  height: 4px;
   margin-right: 5px;
+  vertical-align: middle;
+  border-radius: 50%;
+  background: #fff;
+  opacity: 0;
+  transform: scale(0);
+  transition: all 0.25s;
 }
 
-.tipImage {
-  text-align: center;
-  margin-top: 20%;
-
+.source-seg-item.active .source-seg-dot {
+  opacity: 0.9;
+  transform: scale(1);
 }
 
-.tipImage .img {
-  width: 100px;
-  height: 100px;
+/* 滑块本体：随 source 平移 */
+.source-seg-thumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: calc((100% - 6px) / 3);
+  height: 34px;
+  border-radius: 20px;
+  background: var(--accent-grad);
+  box-shadow: 0 2px 8px rgba(255, 77, 109, 0.35);
+  transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.tipText {
-  margin-top: 5%;
-  font-size: 14px;
-  color: #999;
-  text-align: center;
+.source-seg-thumb.pos-0 { transform: translateX(0); }
+.source-seg-thumb.pos-1 { transform: translateX(100%); }
+.source-seg-thumb.pos-2 { transform: translateX(200%); }
+
+/* 搜索输入框 */
+.search-bar-wrap {
+  margin-top: 12px;
 }
 
-.song_image {
-  border-radius: 10px;
-  width: 50px;
-  height: 50px;
+.search-bar {
+  display: flex;
+  align-items: center;
+  height: 44px;
+  padding: 0 14px;
+  border-radius: 22px;
+  background: var(--card);
+  border: 1px solid var(--line);
+}
+
+.search-bar-icon {
   margin-right: 10px;
+  color: var(--accent);
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.search-bar-input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.search-bar-placeholder {
+  color: var(--text-tertiary);
+}
+
+/* 搜索类型标签 */
+.type-chips {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.type-chip {
+  padding: 6px 18px;
+  border-radius: 16px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  background: var(--chip-bg);
+  border: 1px solid var(--line);
+  transition: all 0.2s;
+}
+
+.type-chip.active {
+  color: var(--accent);
+  font-weight: 600;
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+/* ========== 热门提示词 ========== */
+.prompts {
+  padding: 20px 16px 0;
+  animation: fade-up 0.4s ease both;
+}
+
+.prompts-title {
+  display: flex;
+  align-items: center;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* “火焰”热点：脉动的橙红圆点 */
+.prompts-flame {
+  width: 8px;
+  height: 8px;
+  margin-right: 8px;
+  border-radius: 50%;
+  background: var(--accent-grad);
+  animation: flame-pulse 1.8s ease-in-out infinite;
+}
+
+.prompts-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.prompt-chip {
+  padding: 8px 16px;
+  border-radius: 18px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  animation: fade-up 0.35s ease both;
+  transition: all 0.15s;
+}
+
+.prompt-chip:active {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  transform: scale(0.96);
+}
+
+/* ========== 空状态 ========== */
+.empty {
+  margin-top: 22%;
+  text-align: center;
+  animation: fade-up 0.4s ease both;
+}
+
+.empty-notes {
+  position: relative;
+  height: 48px;
+}
+
+.empty-note {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  color: var(--text-tertiary);
+  font-size: 22px;
+  animation: note-float 2.4s ease-in-out infinite;
+}
+
+.empty-note.mid {
+  margin-left: -36px;
+  animation-delay: 0.8s;
+}
+
+.empty-note.late {
+  margin-left: 24px;
+  animation-delay: 1.6s;
+}
+
+.empty-title {
+  margin-top: 6px;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.empty-desc {
+  margin-top: 6px;
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+/* ========== 结果列表 ========== */
+.results {
+  padding: 16px 16px 0;
+}
+
+.results-label {
+  margin-bottom: 10px;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.results-count {
+  margin-left: 4px;
+  padding: 1px 8px;
+  border-radius: 9px;
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  background: var(--accent-soft);
+}
+
+.card {
+  border-radius: 16px;
+  background: var(--card);
+  overflow: hidden;
+}
+
+/* 结果行：统一右侧箭头 + 让位空间（与歌单详情/用户歌单页同规格） */
+.result-row {
+  position: relative;
+  padding-right: 42px;
+  animation: fade-up 0.3s ease both;
+}
+
+.song-card,
+.playlist-card,
+.user-card {
+  position: relative;
+  padding-right: 42px;
+}
+
+/* 统一封面：56px、12px 间距
+   （weui 只定义了 __hd_in-appmsg 的边距，此处 __hd 无样式，右边距由封面承担） */
+.result-cover,
+.user-avatar {
+  display: block;
+  width: 56px;
+  height: 56px;
+  border-radius: 10px;
+  margin-right: 12px;
+  background-color: var(--line);
+}
+
+.user-avatar {
+  border-radius: 50%;
+}
+
+.result-meta {
+  margin-top: 4px;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.user-signature {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.result-arrow {
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  margin-top: -12px;
+  color: var(--text-tertiary);
+  font-size: 26px;
+  line-height: 24px;
+}
+
+.song-album {
+  margin-left: 3px;
 }
 
 .weui-media-box__desc {
   -webkit-line-clamp: 1;
+}
+
+/* ========== 动画 ========== */
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes note-float {
+  0%, 100% { transform: translateY(0); opacity: 0.5; }
+  50% { transform: translateY(-8px); opacity: 1; }
+}
+
+@keyframes flame-pulse {
+  0%, 100% { transform: scale(1); opacity: 0.8; }
+  50% { transform: scale(1.35); opacity: 1; }
 }

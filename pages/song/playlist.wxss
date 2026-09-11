@@ -1,0 +1,155 @@
+/* pages/song/playlist.wxss */
+.playlist-page {
+  min-height: 100vh;
+  padding-bottom: calc(env(safe-area-inset-bottom) + 20px);
+}
+
+.playlist-header {
+  display: flex;
+  align-items: center;
+  margin: 10px;
+  padding: 18px 16px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #ffffff, #f5f8ff);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+}
+
+.playlist-header-cover {
+  flex: 0 0 auto;
+  width: 112px;
+  height: 112px;
+  border-radius: 12px;
+  background-color: #eee;
+}
+
+.playlist-header-content {
+  min-width: 0;
+  margin-left: 16px;
+}
+
+.playlist-title {
+  color: #222;
+  font-size: 18px;
+  font-weight: 600;
+  word-break: break-all;
+}
+
+.playlist-creator,
+.playlist-meta {
+  margin-top: 8px;
+  color: #888;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.creator-link {
+  color: #576b95;
+}
+
+.creator-arrow {
+  margin-left: 4px;
+  font-size: 16px;
+}
+
+.playlist-description {
+  margin: 12px 16px;
+  color: #888;
+  font-size: 13px;
+  line-height: 1.6;
+  word-break: break-all;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.section-title {
+  margin: 18px 14px 8px;
+  color: #555;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.section-count {
+  margin-left: 6px;
+  color: #aaa;
+  font-size: 12px;
+  font-weight: normal;
+}
+
+.songList {
+  margin: 10px;
+  margin-bottom: constant(safe-area-inset-bottom);
+  margin-bottom: env(safe-area-inset-bottom);
+  border: none;
+  border-radius: 10px;
+}
+
+/* 与 select / user-playlists 页结果列表对齐：统一封面规格、右侧箭头与让位空间 */
+.song-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding-right: 42px;
+}
+
+/* weui 只定义了 __hd_in-appmsg 的边距，此处 __hd 无样式，右边距由封面承担 */
+.result-cover {
+  display: block;
+  width: 56px;
+  height: 56px;
+  border-radius: 10px;
+  margin-right: 12px;
+  background-color: #eee;
+}
+
+.result-arrow {
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  margin-top: -12px;
+  color: #bbb;
+  font-size: 26px;
+  line-height: 24px;
+}
+
+.song-album {
+  margin-left: 3px;
+}
+
+.empty-state {
+  margin-top: 22%;
+  text-align: center;
+}
+
+.empty-image {
+  width: 100px;
+  height: 100px;
+}
+
+.empty-text {
+  margin-top: 14px;
+  color: #999;
+  font-size: 14px;
+}
+
+@media (prefers-color-scheme: dark) {
+  .playlist-header {
+    background: linear-gradient(135deg, #333, #252a35);
+  }
+
+  .playlist-title {
+    color: #eee;
+  }
+
+  .playlist-creator,
+  .playlist-meta,
+  .playlist-description,
+  .section-title,
+  .section-count,
+  .empty-text {
+    color: #999;
+  }
+}

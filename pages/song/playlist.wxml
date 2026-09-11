@@ -1,0 +1,32 @@
+<view wx:if="{{bbbug}}" class="playlist-page">
+  <view class="playlist-header" wx:if="{{playlist}}">
+    <image class="playlist-header-cover" src="{{playlist.cover || '/res/image/nohead.jpg'}}" mode="aspectFill" binderror="onPlaylistPicError"></image>
+    <view class="playlist-header-content">
+      <view class="playlist-title">{{playlist.name}}</view>
+      <view class="playlist-creator {{playlist.creatorId?'creator-link':''}}" bindtap="openCreatorPlaylists">创建者：{{playlist.creatorName || (source=='tencent'?'QQ音乐用户':'网易云用户')}}<text wx:if="{{playlist.creatorId}}" class="creator-arrow">›</text></view>
+      <view class="playlist-meta">{{playlist.trackCount || songList.length}} 首 · 播放量 {{playlist.playCount || 0}}</view>
+    </view>
+  </view>
+
+  <view class="playlist-description" wx:if="{{playlist.description}}">{{playlist.description}}</view>
+  <view class="section-title">歌曲列表 <text class="section-count">{{songList.length}} 首</text></view>
+
+  <view class="empty-state" wx:if="{{hasLoaded && songList.length==0}}">
+    <image class="empty-image" src="/res/image/alert.png"></image>
+    <view class="empty-text">这个歌单暂时没有可播放的歌曲</view>
+  </view>
+  <view class="weui-panel weui-panel_access songList" wx:if="{{songList.length>0}}">
+    <view class="weui-panel__bd">
+      <view class="weui-media-box weui-media-box_appmsg song-row" wx:for="{{songList}}" wx:key="mid" bindtap="showMenu" mark:item="{{item}}">
+        <view class="weui-media-box__hd">
+          <image class="result-cover" src="{{item.pic || '/res/image/nohead.jpg'}}" mode="aspectFill" binderror="onSongPicError" data-index="{{index}}"></image>
+        </view>
+        <view class="weui-media-box__bd">
+          <view class="weui-media-box__title">{{item.name}}</view>
+          <view class="weui-media-box__desc">{{item.singer}}<text wx:if="{{item.album}}" class="song-album">({{item.album}})</text></view>
+        </view>
+        <view class="result-arrow">›</view>
+      </view>
+    </view>
+  </view>
+</view>

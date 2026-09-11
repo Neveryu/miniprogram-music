@@ -1,74 +1,543 @@
-.app_desc {
-  padding: 0 40px 30px;
-  color: #888;
+page {
+  background: #f2ead8;
+}
+
+.vinyl-page {
+  position: relative;
+  display: flex;
+  box-sizing: border-box;
+  min-height: 100vh;
+  flex-direction: column;
+  padding: 36rpx 56rpx calc(32rpx + env(safe-area-inset-bottom));
+  background: #f2ead8;
+  color: #2b2115;
+  overflow: hidden;
+}
+
+/* 纸张颗粒 */
+.paper-grain {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  background-image: radial-gradient(rgba(43, 33, 21, 0.06) 1rpx, transparent 1rpx);
+  background-size: 10rpx 10rpx;
+  pointer-events: none;
+}
+
+/* ---------- 刊头 ---------- */
+.masthead {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+}
+
+.mast-text {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 19rpx;
+  font-weight: 700;
+  letter-spacing: 3rpx;
+  color: #857457;
+}
+
+.mast-rule {
+  flex: 1;
+  height: 2rpx;
+  margin: 0 24rpx;
+  background: rgba(43, 33, 21, 0.3);
+}
+
+/* ---------- 黑胶区 ---------- */
+.hero {
+  position: relative;
+  z-index: 1;
+  margin-top: 48rpx;
   text-align: center;
 }
 
-.login-card {
-  margin: 0 24px;
-  padding: 40px 24px;
-  border-radius: 16px;
-  background-color: rgba(127, 127, 127, 0.08);
-  text-align: center;
-}
-
-.avatar-button {
-  width: 104px;
-  height: 104px;
-  padding: 0;
+.deck {
+  position: relative;
+  width: 300rpx;
+  height: 300rpx;
   margin: 0 auto;
-  border-radius: 50%;
-  background: transparent;
-  line-height: 1;
 }
 
-.avatar-button::after {
+.record-shadow {
+  position: absolute;
+  bottom: -22rpx;
+  left: 50%;
+  width: 240rpx;
+  height: 36rpx;
+  border-radius: 50%;
+  background: rgba(43, 33, 21, 0.18);
+  filter: blur(6rpx);
+  transform: translateX(-50%);
+}
+
+.record {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  overflow: hidden;
+  border-radius: 50%;
+  background:
+    linear-gradient(135deg, rgba(255, 251, 241, 0.14) 0%, transparent 42%, transparent 60%, rgba(255, 251, 241, 0.08) 100%),
+    repeating-radial-gradient(circle at 50% 50%, #2a2318 0 3rpx, #1d1710 3rpx 7rpx);
+  box-shadow: 0 18rpx 44rpx rgba(43, 33, 21, 0.28);
+  animation: spin 8s linear infinite;
+}
+
+.record-label {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 108rpx;
+  height: 108rpx;
+  border: 4rpx solid #f2ead8;
+  border-radius: 50%;
+  background: #c65327;
+  transform: translate(-50%, -50%);
+}
+
+.record-spindle {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 14rpx;
+  height: 14rpx;
+  border-radius: 50%;
+  background: #f2ead8;
+  transform: translate(-50%, -50%);
+}
+
+/* 唱针臂 */
+.tonearm {
+  position: absolute;
+  top: -14rpx;
+  right: -26rpx;
+  width: 200rpx;
+  height: 200rpx;
+  pointer-events: none;
+}
+
+.arm-base {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 32rpx;
+  height: 32rpx;
+  border: 5rpx solid #2b2115;
+  border-radius: 50%;
+  background: #f2ead8;
+}
+
+.arm-stick {
+  position: absolute;
+  top: 16rpx;
+  right: 16rpx;
+  width: 5rpx;
+  height: 172rpx;
+  border-radius: 4rpx;
+  background: #2b2115;
+  transform-origin: 50% 0;
+  transform: rotate(30deg);
+}
+
+.arm-head {
+  position: absolute;
+  top: 147rpx;
+  right: 84rpx;
+  width: 36rpx;
+  height: 36rpx;
+  border: 5rpx solid #2b2115;
+  border-radius: 50%;
+  background: #c65327;
+}
+
+.hero-title {
+  margin-top: 40rpx;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 72rpx;
+  font-weight: 500;
+  line-height: 1.1;
+  color: #2b2115;
+}
+
+.hero-sub {
+  margin-top: 18rpx;
+  font-size: 25rpx;
+  letter-spacing: 6rpx;
+  color: #857457;
+}
+
+/* ---------- 入场券 ---------- */
+.ticket {
+  position: relative;
+  z-index: 1;
+  margin-top: auto;
+  border: 2rpx solid #2b2115;
+  border-radius: 20rpx;
+  background: #fffaf1;
+  box-shadow: 8rpx 10rpx 0 rgba(43, 33, 21, 0.14);
+}
+
+.ticket-head {
+  position: relative;
+  display: flex;
+  padding: 24rpx 32rpx;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 2rpx dashed rgba(43, 33, 21, 0.35);
+}
+
+.ticket-label {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 20rpx;
+  font-weight: 700;
+  letter-spacing: 3rpx;
+  color: #c65327;
+}
+
+.ticket-free {
+  padding: 2rpx 14rpx;
+  border: 2rpx solid #c65327;
+  border-radius: 8rpx;
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 19rpx;
+  font-weight: 700;
+  letter-spacing: 2rpx;
+  color: #c65327;
+}
+
+.ticket-notch {
+  position: absolute;
+  bottom: -18rpx;
+  width: 32rpx;
+  height: 32rpx;
+  border: 2rpx solid #2b2115;
+  border-radius: 50%;
+  background: #f2ead8;
+}
+
+.notch-l {
+  left: -18rpx;
+}
+
+.notch-r {
+  right: -18rpx;
+}
+
+.ticket-body {
+  padding: 36rpx 32rpx 32rpx;
+}
+
+.ticket-title {
+  font-size: 40rpx;
+  font-weight: 600;
+  line-height: 1.3;
+  color: #2b2115;
+}
+
+.ticket-desc {
+  margin-top: 12rpx;
+  font-size: 24rpx;
+  line-height: 1.6;
+  color: #857457;
+}
+
+.login-button {
+  display: flex;
+  box-sizing: border-box;
+  width: 100%;
+  height: 104rpx;
+  margin-top: 0;
+  align-items: center;
+  justify-content: center;
+  border: 2rpx dashed rgba(43, 33, 21, 0.35);
+  border-radius: 14rpx;
+  background: transparent;
+  color: rgba(43, 33, 21, 0.38);
+  font-size: 30rpx;
+  font-weight: 600;
+  line-height: 104rpx;
+}
+
+.login-button::after {
   border: none;
 }
 
-.avatar-button image {
-  width: 100px;
-  height: 100px;
-  border: 2px solid rgba(127, 127, 127, 0.2);
-  border-radius: 50%;
+.login-button.is-ready {
+  border: 2rpx solid #2b2115;
+  background: #2b2115;
+  color: #f7efdd;
+  box-shadow: 5rpx 6rpx 0 rgba(43, 33, 21, 0.22);
 }
 
-.avatar-tip {
-  margin: 10px 0 24px;
-  color: #888;
-  font-size: 13px;
+.login-button.is-ready:active {
+  transform: translate(2rpx, 2rpx);
+  box-shadow: 2rpx 3rpx 0 rgba(43, 33, 21, 0.22);
 }
 
-.weui-cells {
-  text-align: left;
+.login-button[disabled] {
+  opacity: 1;
 }
 
-.weui-label {
-  width: 56px;
+.button-wrap {
+  position: relative;
+  margin-top: 36rpx;
 }
 
-.wechat-login-icon {
-  color: #07c160;
-  font-size: 56px;
+.lock-shield {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 3;
+  border-radius: 14rpx;
+}
+
+.btn-note {
+  margin-right: 14rpx;
+  font-size: 28rpx;
   line-height: 1;
 }
 
-.wechat-login-icon .iconfont {
-  font-size: 56px;
+.login-hint {
+  margin-top: 20rpx;
+  text-align: center;
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 20rpx;
+  letter-spacing: 2rpx;
+  color: rgba(43, 33, 21, 0.4);
 }
 
-.login-title {
-  margin-top: 20px;
-  font-size: 20px;
+/* ---------- 协议 ---------- */
+.consent-row {
+  position: relative;
+  display: flex;
+  margin-top: 30rpx;
+  align-items: flex-start;
+}
+
+.consent-row.is-shaking {
+  animation: consentShake 0.5s cubic-bezier(0.36, 0.07, 0.19, 0.97);
+}
+
+@keyframes consentShake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  15% {
+    transform: translateX(-14rpx);
+  }
+  30% {
+    transform: translateX(12rpx);
+  }
+  45% {
+    transform: translateX(-9rpx);
+  }
+  60% {
+    transform: translateX(7rpx);
+  }
+  75% {
+    transform: translateX(-4rpx);
+  }
+  90% {
+    transform: translateX(2rpx);
+  }
+}
+
+.consent-check {
+  display: flex;
+  box-sizing: border-box;
+  width: 32rpx;
+  height: 32rpx;
+  margin: 6rpx 16rpx 0 0;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border: 2rpx solid rgba(43, 33, 21, 0.45);
+  border-radius: 8rpx;
+  color: #fffaf1;
+  font-size: 22rpx;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.consent-check.is-alerting {
+  border-color: #c65327;
+  background: #c65327;
+  animation: checkBlink 0.9s ease;
+}
+
+@keyframes checkBlink {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(198, 83, 39, 0);
+  }
+  20%,
+  60% {
+    box-shadow: 0 0 0 10rpx rgba(198, 83, 39, 0.25);
+  }
+  40%,
+  80% {
+    box-shadow: 0 0 0 4rpx rgba(198, 83, 39, 0.15);
+  }
+}
+
+.check-alert {
+  color: #fffaf1;
+  font-size: 24rpx;
+  font-weight: 700;
+}
+
+.consent-flag {
+  position: absolute;
+  bottom: -46rpx;
+  left: 48rpx;
+  z-index: 2;
+  padding: 8rpx 18rpx;
+  border: 2rpx solid #2b2115;
+  border-radius: 8rpx;
+  background: #c65327;
+  color: #fffaf1;
+  font-size: 20rpx;
   font-weight: 600;
+  white-space: nowrap;
+  box-shadow: 3rpx 4rpx 0 rgba(43, 33, 21, 0.2);
+  animation: flagPop 0.9s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
-.login-desc {
-  margin-top: 10px;
-  color: #888;
-  font-size: 14px;
+.consent-flag::before {
+  position: absolute;
+  top: -10rpx;
+  left: 14rpx;
+  width: 14rpx;
+  height: 14rpx;
+  border-top: 2rpx solid #2b2115;
+  border-left: 2rpx solid #2b2115;
+  background: #c65327;
+  content: '';
+  transform: rotate(45deg);
 }
 
-.wechat-login-button {
-  margin-top: 32px;
+@keyframes flagPop {
+  0% {
+    opacity: 0;
+    transform: translateY(8rpx) scale(0.8);
+  }
+  25% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  80% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-4rpx) scale(0.95);
+  }
+}
+
+.consent-check.checked {
+  border-color: #c65327;
+  background: #c65327;
+}
+
+.consent-copy {
+  font-size: 22rpx;
+  line-height: 1.7;
+  color: rgba(43, 33, 21, 0.62);
+}
+
+.consent-link {
+  color: #c65327;
+}
+
+.consent-link.read {
+  color: #2b2115;
+  text-decoration: underline;
+}
+
+/* ---------- 页脚 ---------- */
+.page-foot {
+  position: relative;
+  z-index: 1;
+  margin-top: 30rpx;
+  text-align: center;
+}
+
+.foot-rule {
+  position: relative;
+  height: 2rpx;
+  margin-bottom: 22rpx;
+  background: rgba(43, 33, 21, 0.22);
+}
+
+.foot-rule::after {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 10rpx;
+  height: 10rpx;
+  border-radius: 2rpx;
+  background: #c65327;
+  content: '';
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.foot-text {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 19rpx;
+  letter-spacing: 2rpx;
+  color: rgba(43, 33, 21, 0.45);
+}
+
+/* ---------- 进场编排 ---------- */
+.reveal {
+  opacity: 0;
+  animation: rise 0.55s cubic-bezier(0.16, 0.84, 0.3, 1) forwards;
+}
+
+.r1 {
+  animation-delay: 0.05s;
+}
+
+.r2 {
+  animation-delay: 0.16s;
+}
+
+.r3 {
+  animation-delay: 0.28s;
+}
+
+.r4 {
+  animation-delay: 0.4s;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(22rpx);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }

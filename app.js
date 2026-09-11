@@ -12,7 +12,36 @@ App({
   },
   systemInfo: null,
   avatarPromptVisible: false,
+  cloudFileUrlCache: {},
   request,
+  resolveCloudFileUrls(fileIds) {
+    const sources = [...new Set((fileIds || []).filter((fileId) => /^cloud:\/\//i.test(fileId)))]
+    const pending = sources.filter((fileId) => !this.cloudFileUrlCache[fileId])
+    if (!pending.length) {
+      return Promise.resolve(this.cloudFileUrlCache)
+    }
+    const batches = []
+    for (let index = 0; index < pending.length; index += 50) {
+      batches.push(pending.slice(index, index + 50))
+    }
+    return Promise.all(batches.map((fileList) => wx.cloud.getTempFileURL({ fileList }))).then((results) => {
+      results.forEach((result) => {
+        const files = result.fileList || []
+        files.forEach((file) => {
+          if (file.status === 0 && file.tempFileURL) {
+            this.cloudFileUrlCache[file.fileID] = file.tempFileURL
+          }
+        })
+      })
+      return this.cloudFileUrlCache
+    })
+  },
+  resolveCloudFileUrl(fileId) {
+    if (!/^cloud:\/\//i.test(fileId || '')) {
+      return Promise.resolve(fileId || '')
+    }
+    return this.resolveCloudFileUrls([fileId]).then((urls) => urls[fileId] || '')
+  },
   onLaunch() {
     checkMiniprogramVersion()
     this.systemInfo = wx.getSystemInfoSync()

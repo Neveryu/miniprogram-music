@@ -33,6 +33,12 @@ Component({
       this.getSongList()
       wx.stopPullDownRefresh()
     },
+    // 封面图加载失败时回退本地占位图
+    onSongPicError(e) {
+      this.setData({
+        [`songList[${e.currentTarget.dataset.index}].song.pic`]: '/res/image/nohead.jpg'
+      })
+    },
     getSongList() {
       app.request({
         url: 'song/songList',
@@ -68,6 +74,8 @@ Component({
                 loading: '置顶中',
                 data: {
                   mid: song.song.mid,
+                  source: song.song.source,
+                  queue_id: song._id,
                   room_id: app.globalData.roomInfo.room_id
                 },
                 success: (res) => {
@@ -84,6 +92,8 @@ Component({
                 loading: '移除中',
                 data: {
                   mid: song.song.mid,
+                  source: song.song.source,
+                  queue_id: song._id,
                   room_id: app.globalData.roomInfo.room_id
                 },
                 success: (res) => {
@@ -100,6 +110,7 @@ Component({
                 data: {
                   room_id: app.globalData.roomInfo.room_id,
                   mid: song.song.mid,
+                  source: song.song.source,
                   song: song.song,
                 },
                 loading: '收藏中',
@@ -116,6 +127,8 @@ Component({
                 data: {
                   room_id: app.globalData.roomInfo.room_id,
                   mid: song.song.mid,
+                  source: song.song.source,
+                  song: song.song,
                 },
                 loading: '播放中',
                 success: (res) => {
