@@ -191,13 +191,13 @@ QQ 歌曲不持久化播放地址（`validateSong` 对 tencent 来源清空 `url
 
 ## 6. 自动补歌
 
-播放队列不足时（目标数量 1~5 首，默认 3 首），云函数 `refillQueue` 按以下顺序补充可播放歌曲：
+播放队列不足时（目标数量 1~5 首，默认 3 首），云函数 `refillQueue` 并行准备三个来源的可播放候选：
 
 1. 当前用户收藏（`playlists`，最多取 100 条候选）。
 2. 房间缓存的备用歌曲（`rooms.backup_songs`，最多缓存 10 首）。
 3. 房间 `search_prompts` 随机提示词的网易云搜索结果。
 
-候选歌曲先经 `filterPlayableSongs` 验证播放地址可解析（1.2 秒超时）才入队；入队项带 `auto_added: true` 和 `backup_source`（favorite/cache/prompt）标记。补歌过程通过 `refill_lock_until`（15 秒锁）和 `refill_lock_token` 防止并发重复补充，并可通过定时触发器 `refillPlaybackQueue` 周期性执行。队列排空时房间进入 `auto_refill_paused` 状态，下次补歌或切歌时恢复。
+三个来源按权重 `REFILL_SOURCE_WEIGHTS`（favorite:cache:prompt = 5:3:2）随机混入队列，单一来源不再独占补歌；某来源为空时权重自动让渡给其余来源。候选歌曲先经 `filterPlayableSongs` 验证播放地址可解析（1.2 秒超时）才入队；入队项带 `auto_added: true` 和 `backup_source`（favorite/cache/prompt）标记。为避免反复补入同一批歌曲：收藏、缓存和提示词搜索候选均随机打乱后取样，且补歌会排除 `rooms.recent_played` 中记录的最近 20 首已播歌曲（歌曲成为当前播放时写入）。提示词搜索成功时同步刷新 `backup_songs` 缓存。补歌过程通过 `refill_lock_until`（15 秒锁）和 `refill_lock_token` 防止并发重复补充，并可通过定时触发器 `refillPlaybackQueue` 周期性执行。队列排空时房间进入 `auto_refill_paused` 状态，下次补歌或切歌时恢复。
 
 ## 7. 管理能力
 

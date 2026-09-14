@@ -12,6 +12,8 @@ const MUSIC_API_URL = 'https://api.i-meto.com/meting/api'
 const NETEASE_MUSIC_API_URL = 'https://meting.mikus.ink/api'
 const MUSIC_SOURCES = ['netease', 'tencent', 'kugou', 'wydt']
 const DEFAULT_SEARCH_PROMPTS = ['周杰伦', '流行歌曲', '经典歌曲', '精选']
+// 自动补歌来源权重（收藏 / 缓存 / 提示词），候选按权重随机混入队列
+const REFILL_SOURCE_WEIGHTS = { favorite: 5, cache: 3, prompt: 2 }
 const AUTO_SONG_USER = {
   user_id: 'system',
   user_name: 'Music For U',
@@ -412,6 +414,7 @@ const ensureDefaultRoom = async (user) => {
     room_playone: 0,
     search_prompts: DEFAULT_SEARCH_PROMPTS,
     backup_songs: [],
+    recent_played: [],
     current_song: null,
     auto_refill_paused: false,
     refill_status: 'idle',
@@ -442,6 +445,10 @@ const getDefaultRoom = async (user) => {
   if (!Array.isArray(room.backup_songs)) {
     roomDefaults.backup_songs = []
     room.backup_songs = []
+  }
+  if (!Array.isArray(room.recent_played)) {
+    roomDefaults.recent_played = []
+    room.recent_played = []
   }
   if (typeof room.refill_lock_until !== 'number') {
     roomDefaults.refill_lock_until = 0
@@ -634,6 +641,22 @@ const addSong = async (payload, user, playNow = false) => {
     return failure('只有房主可以立即播放歌曲', 403)
   }
   const song = validateSong(payload.song || payload)
+  // 防重复点歌：已在队列或正在播放的歌曲直接拒绝（立即播放除外）
+  if (!playNow) {
+    if (room.current_song && room.current_song.song
+      && normalizeMusicSource(room.current_song.song.source) === normalizeMusicSource(song.source)
+      && String(room.current_song.song.mid) === String(song.mid)) {
+      return failure('该歌曲正在播放中', 409)
+    }
+    const existing = await db.collection('play_queue').where({
+      room_id: DEFAULT_ROOM_ID,
+      'song.source': normalizeMusicSource(song.source),
+      'song.mid': song.mid
+    }).limit(1).get()
+    if (existing.data.length) {
+      return failure('该歌曲已在播放列表中', 409)
+    }
+  }
   const queueItem = {
     room_id: DEFAULT_ROOM_ID,
     song,
@@ -646,6 +669,7 @@ const addSong = async (payload, user, playNow = false) => {
     await db.collection('rooms').where({ room_id: DEFAULT_ROOM_ID }).update({
       data: {
         current_song: _.set({ ...queueItem, _id: created._id, since: Math.floor(Date.now() / 1000) }),
+        recent_played: buildRecentPlayed(room, song),
         auto_refill_paused: false,
         updated_at: db.serverDate()
       }
@@ -662,12 +686,16 @@ const switchToNextSong = async (room) => {
   const condition = currentId
     ? { room_id: DEFAULT_ROOM_ID, 'current_song._id': currentId }
     : { room_id: DEFAULT_ROOM_ID, current_song: null }
+  const switchData = {
+    current_song: _.set(next ? { ...next, since: Math.floor(Date.now() / 1000) } : null),
+    auto_refill_paused: !next,
+    updated_at: db.serverDate()
+  }
+  if (next && next.song) {
+    switchData.recent_played = buildRecentPlayed(room, next.song)
+  }
   const updated = await db.collection('rooms').where(condition).update({
-    data: {
-      current_song: _.set(next ? { ...next, since: Math.floor(Date.now() / 1000) } : null),
-      auto_refill_paused: !next,
-      updated_at: db.serverDate()
-    }
+    data: switchData
   })
   if (!updated.stats.updated) {
     return { advanced: false, next: null }
@@ -687,15 +715,38 @@ const getQueueSongs = async () => {
   return result.data
 }
 
+// 随机打乱候选歌曲顺序，避免每次都补入同一批头部歌曲
+const shuffleSongs = (songs) => {
+  const list = songs.filter(Boolean)
+  for (let i = list.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[list[i], list[j]] = [list[j], list[i]]
+  }
+  return list
+}
+
+// 生成歌曲去重键，与补歌 existingKeys 的 source:mid 格式保持一致
+const playedSongKey = (song) => `${normalizeMusicSource(song && song.source)}:${song && song.mid}`
+
+// 构建最近已播列表：新歌置顶、去重、最多保留 20 首
+const buildRecentPlayed = (room, song) => {
+  const existing = Array.isArray(room.recent_played) ? room.recent_played : []
+  if (!song || !song.mid) {
+    return existing
+  }
+  const key = playedSongKey(song)
+  return [key, ...existing.filter((item) => item !== key)].slice(0, 20)
+}
+
 const getFavoriteSongs = async (user) => {
   const result = await db.collection('playlists').where({ _openid: user._openid }).orderBy('created_at', 'desc').limit(100).get()
-  return result.data.map((item) => {
+  return shuffleSongs(result.data.map((item) => {
     try {
       return validateSong(item.song)
     } catch (error) {
       return null
     }
-  }).filter((song) => song && song.source !== 'wydt')
+  }).filter((song) => song && song.source !== 'wydt'))
 }
 
 const filterPlayableSongs = async (songs, existingKeys, limit) => {
@@ -742,6 +793,7 @@ const refillQueue = async (payload, user) => {
       }).update({
         data: {
           current_song: _.set({ ...queue[0], since: Math.floor(Date.now() / 1000) }),
+          recent_played: buildRecentPlayed(room, queue[0].song),
           auto_refill_paused: false,
           updated_at: db.serverDate()
         }
@@ -768,57 +820,59 @@ const refillQueue = async (payload, user) => {
   try {
     const currentQueue = await getQueueSongs()
     const existingKeys = new Set(currentQueue.map((item) => `${normalizeMusicSource(item.song && item.song.source)}:${item.song && item.song.mid}`))
+    // 排除最近已播歌曲，避免播完出队后被立刻再次补入
+    ;(Array.isArray(room.recent_played) ? room.recent_played : []).forEach((key) => existingKeys.add(key))
     const needed = target - currentQueue.length
     const added = []
-    const favorites = await getFavoriteSongs(user)
-    const favoriteCandidates = await filterPlayableSongs(favorites, existingKeys, needed)
-    for (const song of favoriteCandidates) {
-      const key = `${song.source}:${song.mid}`
-      if (added.length >= needed || existingKeys.has(key)) {
-        continue
-      }
-      const item = await addBackupSong(song, 'favorite', added.length)
-      existingKeys.add(key)
-      added.push(item)
-    }
-    if (added.length < needed) {
-      const cachedSongs = await filterPlayableSongs(room.backup_songs.map((song) => {
+    // 三个来源并行准备可播放候选（各自随机打乱、排除已选）
+    const [favoritePool, cachePool, promptPool] = await Promise.all([
+      getFavoriteSongs(user).then((songs) => filterPlayableSongs(songs, existingKeys, needed)),
+      filterPlayableSongs(shuffleSongs(room.backup_songs.map((song) => {
         try {
           return validateSong(song)
         } catch (error) {
           return null
         }
-      }), existingKeys, needed - added.length)
-      for (const song of cachedSongs) {
-        const key = `${song.source}:${song.mid}`
-        if (existingKeys.has(key)) {
-          continue
+      })), existingKeys, needed),
+      findPromptSongs(room, existingKeys, needed).then((songs) => filterPlayableSongs(songs, existingKeys, needed))
+    ])
+    // 提示词搜索成功时刷新房间缓存
+    if (promptPool.length) {
+      await db.collection('rooms').doc(room._id).update({
+        data: {
+          backup_songs: promptPool.slice(0, 10),
+          updated_at: db.serverDate()
         }
-        const item = await addBackupSong(song, 'cache', added.length)
-        existingKeys.add(key)
-        added.push(item)
-      }
+      })
     }
-    if (added.length < needed) {
-      const songs = await findPromptSongs(room, existingKeys, needed - added.length)
-      const playableSongs = await filterPlayableSongs(songs, existingKeys, needed - added.length)
-      for (const song of playableSongs) {
-        const key = `${song.source}:${song.mid}`
-        if (existingKeys.has(key)) {
-          continue
+    // 按权重随机混入三个来源，避免单一来源独占补歌
+    const pools = [
+      { source: 'favorite', weight: REFILL_SOURCE_WEIGHTS.favorite, songs: favoritePool },
+      { source: 'cache', weight: REFILL_SOURCE_WEIGHTS.cache, songs: cachePool },
+      { source: 'prompt', weight: REFILL_SOURCE_WEIGHTS.prompt, songs: promptPool }
+    ]
+    while (added.length < needed) {
+      const available = pools.filter((pool) => pool.songs.length)
+      if (!available.length) {
+        break
+      }
+      let roll = Math.random() * available.reduce((sum, pool) => sum + pool.weight, 0)
+      let picked = available[available.length - 1]
+      for (const pool of available) {
+        roll -= pool.weight
+        if (roll < 0) {
+          picked = pool
+          break
         }
-        const item = await addBackupSong(song, 'prompt', added.length)
-        existingKeys.add(key)
-        added.push(item)
       }
-      if (playableSongs.length) {
-        await db.collection('rooms').doc(room._id).update({
-          data: {
-            backup_songs: playableSongs.slice(0, 10),
-            updated_at: db.serverDate()
-          }
-        })
+      const song = picked.songs.shift()
+      const key = `${song.source}:${song.mid}`
+      if (existingKeys.has(key)) {
+        continue
       }
+      const item = await addBackupSong(song, picked.source, added.length)
+      existingKeys.add(key)
+      added.push(item)
     }
     const firstSong = currentQueue[0] || added[0]
     if (firstSong) {
@@ -828,6 +882,7 @@ const refillQueue = async (payload, user) => {
       }).update({
         data: {
           current_song: _.set({ ...firstSong, since: Math.floor(Date.now() / 1000) }),
+          recent_played: buildRecentPlayed(room, firstSong.song),
           auto_refill_paused: false,
           updated_at: db.serverDate()
         }
@@ -982,7 +1037,8 @@ const findPromptSongs = async (room, existingKeys, limit) => {
       id: keyword
     }, JSON.parse, 1500)
     const songs = Array.isArray(result) ? result.map((item) => normalizeMusicItem(item, source)).filter(Boolean) : []
-    return songs.filter((song) => !existingKeys.has(`${song.source}:${song.mid}`)).slice(0, Math.max(limit * 3, limit))
+    // 打乱搜索结果后再取样，避免固定取头部歌曲
+    return shuffleSongs(songs.filter((song) => !existingKeys.has(`${song.source}:${song.mid}`))).slice(0, Math.max(limit * 3, limit))
   } catch (error) {
     return []
   }
