@@ -300,6 +300,8 @@ Page({
         wx.hideNavigationBarLoading()
         app.globalData.userInfo = null
         this.setData({ userInfo: null })
+        // 游客也加载房间信息，可浏览消息与正在播放的歌曲
+        this.getRoomInfo()
       },
       error(res) {
         wx.hideNavigationBarLoading()
@@ -336,6 +338,9 @@ Page({
         this.refillPlaybackQueue()
       },
       error: (res) => {
+        wx.hideNavigationBarLoading()
+      },
+      login: () => {
         wx.hideNavigationBarLoading()
       }
     })

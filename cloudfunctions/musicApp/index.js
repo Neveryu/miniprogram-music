@@ -14,6 +14,16 @@ const MUSIC_SOURCES = ['netease', 'tencent', 'kugou', 'wydt']
 const DEFAULT_SEARCH_PROMPTS = ['周杰伦', '流行歌曲', '经典歌曲', '精选']
 // 自动补歌来源权重（收藏 / 缓存 / 提示词），候选按权重随机混入队列
 const REFILL_SOURCE_WEIGHTS = { favorite: 5, cache: 3, prompt: 2 }
+// 游客（未登录）可访问的只读接口：浏览房间、消息、队列、搜索、歌词与播放地址
+const GUEST_ACTIONS = [
+  'room/getRoomInfo',
+  'app/getRealtimeState',
+  'message/getMessageList',
+  'song/songList',
+  'song/search',
+  'song/getLrc',
+  'song/getUrl'
+]
 const AUTO_SONG_USER = {
   user_id: 'system',
   user_name: 'Music For U',
@@ -1172,6 +1182,13 @@ exports.main = async (event) => {
     }
     const user = await getUserByOpenid(openid)
     if (!user) {
+      // 游客可浏览的只读接口直接放行（房间初始化后才生效，避免游客触发建房）
+      if (GUEST_ACTIONS.indexOf(event.action) > -1) {
+        const roomResult = await db.collection('rooms').where({ room_id: DEFAULT_ROOM_ID }).limit(1).get()
+        if (roomResult.data.length) {
+          return await handlers[event.action](event.payload || {}, null)
+        }
+      }
       return failure('请先完成微信登录', 401)
     }
     const handler = handlers[event.action]
