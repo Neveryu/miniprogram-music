@@ -50,6 +50,10 @@
     <view class="bbbug_panel_icon"><i class="iconfont icon-changyongtubiao-xianxingdaochu-zhuanqu-112"></i></view>
     <view class="bbbug_panel_title">驾驶</view>
   </view>
+  <view class="bbbug_panel_item" bindtap="mainMenuClicked" mark:title="儿歌">
+    <view class="bbbug_panel_icon"><i class="iconfont icon-xingxing"></i></view>
+    <view class="bbbug_panel_title">儿歌</view>
+  </view>
 </view>
 
 <!-- 点击右下脚加号的弹出框 -->

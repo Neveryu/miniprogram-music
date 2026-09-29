@@ -1,0 +1,64 @@
+<view class="nursery" wx:if="{{bbbug}}">
+  <!-- 天空乐园头部 -->
+  <view class="sky">
+    <view class="sun">
+      <view class="sun-ring"></view>
+      <view class="sun-core"></view>
+      <view class="sun-face">
+        <view class="sun-eye eye-l"></view>
+        <view class="sun-eye eye-r"></view>
+        <view class="sun-mouth"></view>
+      </view>
+    </view>
+    <view class="cloud cloud-a"></view>
+    <view class="cloud cloud-b"></view>
+    <view class="hero-text">
+      <view class="hero-title">儿歌乐园</view>
+      <view class="hero-sub">🎵 小朋友的音乐小天地 🎵</view>
+    </view>
+    <view class="rainbow">
+      <view class="rainbow-in r2">
+        <view class="rainbow-in r3"></view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 分类标签 -->
+  <scroll-view class="tabs" scroll-x="true" enhanced="{{true}}" show-scrollbar="{{false}}">
+    <view
+      class="tab {{activeKey == item.key ? 'tab-active' : ''}}"
+      wx:for="{{categories}}"
+      wx:key="key"
+      style="{{activeKey == item.key ? 'background-color:' + item.color + ';' : ''}}"
+      bindtap="switchCategory"
+      mark:key="{{item.key}}">
+      <text>{{item.name}}</text>
+    </view>
+  </scroll-view>
+
+  <!-- 歌曲卡片列表 -->
+  <view class="song-list">
+    <view
+      class="song-card"
+      wx:for="{{activeCategory.songs}}"
+      wx:key="keyword"
+      style="animation-delay: {{index * 55}}ms; border-color: {{activeCategory.color}}; box-shadow: 0 6rpx 0 {{activeCategory.color}}33;">
+      <view class="song-main" bindtap="tapSong" mark:song="{{item}}" hover-class="song-pressed" hover-stay-time="80">
+        <view class="song-badge" style="background-color: {{activeCategory.color}};">{{item.emoji}}</view>
+        <view class="song-info">
+          <view class="song-name">{{item.name}}</view>
+          <view class="song-singer">{{item.singer}}</view>
+        </view>
+      </view>
+      <view class="song-add" style="background-color: {{activeCategory.color}};" bindtap="tapSong" mark:song="{{item}}" hover-class="add-pressed" hover-stay-time="80">＋</view>
+    </view>
+  </view>
+
+  <!-- 底部随机点歌 -->
+  <view class="random-bar">
+    <view class="random-btn" bindtap="randomSong" hover-class="random-pressed" hover-stay-time="80">
+      <text class="random-dice">🎲</text>
+      <text>随机来一首</text>
+    </view>
+  </view>
+</view>

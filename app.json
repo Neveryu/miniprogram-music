@@ -12,6 +12,7 @@
     "pages/song/playing",
     "pages/song/my",
     "pages/song/car-mode",
+    "pages/song/children",
     "pages/room/prompts"
   ],
   "entryPagePath": "pages/index/index",

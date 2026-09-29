@@ -1,0 +1,401 @@
+/* 儿歌乐园：手绘蜡笔绘本风格 */
+.nursery {
+  min-height: 100vh;
+  background-color: #fff7e8;
+  padding-bottom: 220rpx;
+  box-sizing: border-box;
+}
+
+/* ================= 天空头部 ================= */
+.sky {
+  position: relative;
+  height: 420rpx;
+  padding: 60rpx 40rpx 0;
+  box-sizing: border-box;
+  background: linear-gradient(180deg, #c9ecff 0%, #e8f6ff 55%, #fff7e8 100%);
+  overflow: hidden;
+}
+
+/* 太阳：笑脸 + 旋转虚线光环 */
+.sun {
+  position: absolute;
+  top: 48rpx;
+  right: 56rpx;
+  width: 170rpx;
+  height: 170rpx;
+}
+
+.sun-ring {
+  position: absolute;
+  inset: -22rpx;
+  border: 5rpx dashed #ffb800;
+  border-radius: 50%;
+  animation: sun-spin 24s linear infinite;
+}
+
+.sun-core {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 35% 30%, #ffd966 0%, #ffb800 100%);
+  border-radius: 50%;
+  box-shadow: 0 8rpx 24rpx rgba(255, 184, 0, 0.45);
+}
+
+.sun-face {
+  position: absolute;
+  inset: 0;
+}
+
+.sun-eye {
+  position: absolute;
+  top: 58rpx;
+  width: 12rpx;
+  height: 16rpx;
+  background-color: #7a4b12;
+  border-radius: 50%;
+}
+
+.eye-l {
+  left: 46rpx;
+}
+
+.eye-r {
+  right: 46rpx;
+}
+
+.sun-mouth {
+  position: absolute;
+  left: 50%;
+  bottom: 34rpx;
+  width: 44rpx;
+  height: 24rpx;
+  margin-left: -22rpx;
+  border: 5rpx solid #7a4b12;
+  border-top: none;
+  border-left-color: transparent;
+  border-right-color: transparent;
+  border-radius: 0 0 44rpx 44rpx;
+}
+
+/* 云朵：三圆拼合，缓慢漂浮 */
+.cloud {
+  position: absolute;
+  background-color: #ffffff;
+  border-radius: 999rpx;
+  box-shadow: 0 8rpx 20rpx rgba(90, 184, 240, 0.18);
+}
+
+.cloud::before,
+.cloud::after {
+  content: '';
+  position: absolute;
+  background-color: #ffffff;
+  border-radius: 50%;
+}
+
+.cloud-a {
+  top: 60rpx;
+  left: -140rpx;
+  width: 200rpx;
+  height: 62rpx;
+  animation: cloud-drift-a 26s ease-in-out infinite;
+}
+
+.cloud-a::before {
+  top: -34rpx;
+  left: 42rpx;
+  width: 72rpx;
+  height: 72rpx;
+}
+
+.cloud-a::after {
+  top: -22rpx;
+  left: 112rpx;
+  width: 52rpx;
+  height: 52rpx;
+}
+
+.cloud-b {
+  top: 200rpx;
+  right: -90rpx;
+  width: 150rpx;
+  height: 48rpx;
+  opacity: 0.85;
+  animation: cloud-drift-b 32s ease-in-out infinite;
+}
+
+.cloud-b::before {
+  top: -26rpx;
+  left: 30rpx;
+  width: 56rpx;
+  height: 56rpx;
+}
+
+.cloud-b::after {
+  top: -16rpx;
+  left: 82rpx;
+  width: 40rpx;
+  height: 40rpx;
+}
+
+/* 标题 */
+.hero-text {
+  position: relative;
+  margin-top: 30rpx;
+}
+
+.hero-title {
+  display: inline-block;
+  padding: 6rpx 22rpx;
+  font-size: 60rpx;
+  font-weight: 800;
+  color: #4a3428;
+  letter-spacing: 8rpx;
+  background-color: rgba(255, 255, 255, 0.6);
+  border: 4rpx solid #4a3428;
+  border-radius: 24rpx;
+  box-shadow: 0 5rpx 0 rgba(74, 52, 40, 0.85);
+}
+
+.hero-sub {
+  margin-top: 14rpx;
+  font-size: 26rpx;
+  color: #6b5a4a;
+  letter-spacing: 4rpx;
+}
+
+/* 彩虹 */
+.rainbow {
+  position: absolute;
+  left: 44rpx;
+  bottom: -6rpx;
+  width: 200rpx;
+  height: 100rpx;
+  border: 16rpx solid #ff8fab;
+  border-bottom: none;
+  border-radius: 100rpx 100rpx 0 0;
+  opacity: 0.9;
+}
+
+.rainbow-in {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  transform: translateX(-50%);
+  width: 132rpx;
+  height: 66rpx;
+}
+
+.r2 {
+  border: 16rpx solid #ffc53d;
+  border-bottom: none;
+  border-radius: 66rpx 66rpx 0 0;
+}
+
+.r3 {
+  width: 64rpx;
+  height: 32rpx;
+  border: 16rpx solid #7ec74f;
+  border-bottom: none;
+  border-radius: 32rpx 32rpx 0 0;
+}
+
+/* ================= 分类标签 ================= */
+.tabs {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  white-space: nowrap;
+  padding: 24rpx 24rpx 16rpx;
+  background: linear-gradient(180deg, #fff7e8 82%, rgba(255, 247, 232, 0));
+}
+
+.tab {
+  display: inline-block;
+  padding: 14rpx 34rpx;
+  margin-right: 18rpx;
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #6b5a4a;
+  letter-spacing: 2rpx;
+  background-color: #ffffff;
+  border: 4rpx solid #4a3428;
+  border-radius: 999rpx;
+  box-shadow: 0 5rpx 0 rgba(74, 52, 40, 0.85);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, color 0.15s ease;
+}
+
+.tab-active {
+  color: #ffffff;
+  transform: translateY(3rpx);
+  box-shadow: 0 2rpx 0 rgba(74, 52, 40, 0.85);
+}
+
+/* ================= 歌曲卡片 ================= */
+.song-list {
+  padding: 10rpx 32rpx 0;
+}
+
+.song-card {
+  display: flex;
+  align-items: center;
+  margin-bottom: 26rpx;
+  padding: 24rpx 24rpx 24rpx 28rpx;
+  background-color: #ffffff;
+  border: 4rpx dashed;
+  border-radius: 32rpx;
+  animation: card-pop 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.song-main {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+}
+
+.song-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 88rpx;
+  height: 88rpx;
+  margin-right: 24rpx;
+  font-size: 44rpx;
+  border-radius: 28rpx;
+  box-shadow: inset 0 -8rpx 0 rgba(0, 0, 0, 0.12);
+}
+
+.song-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.song-name {
+  font-size: 32rpx;
+  font-weight: 700;
+  color: #4a3428;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.song-singer {
+  margin-top: 8rpx;
+  font-size: 24rpx;
+  color: #a08c78;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.song-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64rpx;
+  height: 64rpx;
+  margin-left: 20rpx;
+  font-size: 40rpx;
+  font-weight: 700;
+  line-height: 1;
+  color: #ffffff;
+  border-radius: 50%;
+  box-shadow: inset 0 -6rpx 0 rgba(0, 0, 0, 0.15);
+}
+
+.song-pressed {
+  transform: scale(0.96);
+}
+
+.add-pressed {
+  transform: scale(0.86) rotate(90deg);
+}
+
+/* ================= 底部随机点歌 ================= */
+.random-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 20rpx 40rpx calc(24rpx + env(safe-area-inset-bottom));
+  background: linear-gradient(180deg, rgba(255, 247, 232, 0) 0%, #fff7e8 40%);
+  z-index: 30;
+}
+
+.random-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100rpx;
+  font-size: 32rpx;
+  font-weight: 800;
+  letter-spacing: 4rpx;
+  color: #ffffff;
+  background: linear-gradient(180deg, #ffd966 0%, #ffb800 100%);
+  border: 4rpx solid #4a3428;
+  border-radius: 999rpx;
+  box-shadow: 0 8rpx 0 rgba(74, 52, 40, 0.9);
+  animation: float-bob 2.8s ease-in-out infinite;
+}
+
+.random-dice {
+  margin-right: 14rpx;
+  font-size: 38rpx;
+}
+
+.random-pressed {
+  transform: translateY(5rpx) scale(0.98);
+  box-shadow: 0 3rpx 0 rgba(74, 52, 40, 0.9);
+}
+
+/* ================= 动画 ================= */
+@keyframes sun-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes cloud-drift-a {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  50% {
+    transform: translateX(70rpx);
+  }
+}
+
+@keyframes cloud-drift-b {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  50% {
+    transform: translateX(-56rpx);
+  }
+}
+
+@keyframes card-pop {
+  from {
+    opacity: 0;
+    transform: translateY(36rpx) scale(0.86);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes float-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8rpx);
+  }
+}

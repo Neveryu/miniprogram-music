@@ -907,6 +907,11 @@ Page({
           }
         })
         break
+      case '儿歌':
+        wx.navigateTo({
+          url: '../song/children?bbbug=' + app.globalData.systemVersion
+        })
+        break
       case '点歌':
         wx.navigateTo({
           url: '../song/select?bbbug=' + app.globalData.systemVersion,
