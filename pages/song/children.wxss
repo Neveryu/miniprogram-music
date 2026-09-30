@@ -27,7 +27,10 @@
 
 .sun-ring {
   position: absolute;
-  inset: -22rpx;
+  top: -22rpx;
+  left: -22rpx;
+  right: -22rpx;
+  bottom: -22rpx;
   border: 5rpx dashed #ffb800;
   border-radius: 50%;
   animation: sun-spin 24s linear infinite;
@@ -35,7 +38,10 @@
 
 .sun-core {
   position: absolute;
-  inset: 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
   background: radial-gradient(circle at 35% 30%, #ffd966 0%, #ffb800 100%);
   border-radius: 50%;
   box-shadow: 0 8rpx 24rpx rgba(255, 184, 0, 0.45);
@@ -95,7 +101,7 @@
 
 .cloud-a {
   top: 60rpx;
-  left: -140rpx;
+  left: 48rpx;
   width: 200rpx;
   height: 62rpx;
   animation: cloud-drift-a 26s ease-in-out infinite;
@@ -202,9 +208,6 @@
 
 /* ================= 分类标签 ================= */
 .tabs {
-  position: sticky;
-  top: 0;
-  z-index: 20;
   white-space: nowrap;
   padding: 24rpx 24rpx 16rpx;
   background: linear-gradient(180deg, #fff7e8 82%, rgba(255, 247, 232, 0));
