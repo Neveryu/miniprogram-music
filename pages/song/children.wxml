@@ -24,7 +24,7 @@
   </view>
 
   <!-- 分类标签 -->
-  <scroll-view class="tabs" scroll-x="true" enhanced="{{true}}" show-scrollbar="{{false}}">
+  <view class="tabs">
     <view
       class="tab {{activeKey == item.key ? 'tab-active' : ''}}"
       wx:for="{{categories}}"
@@ -34,7 +34,7 @@
       mark:key="{{item.key}}">
       <text>{{item.name}}</text>
     </view>
-  </scroll-view>
+  </view>
 
   <!-- 歌曲卡片列表 -->
   <view class="song-list">

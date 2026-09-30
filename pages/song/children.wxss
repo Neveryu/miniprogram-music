@@ -208,7 +208,8 @@
 
 /* ================= 分类标签 ================= */
 .tabs {
-  white-space: nowrap;
+  display: flex;
+  flex-wrap: wrap;
   padding: 24rpx 24rpx 16rpx;
   background: linear-gradient(180deg, #fff7e8 82%, rgba(255, 247, 232, 0));
 }
@@ -217,6 +218,7 @@
   display: inline-block;
   padding: 14rpx 34rpx;
   margin-right: 18rpx;
+  margin-bottom: 16rpx;
   font-size: 28rpx;
   font-weight: 600;
   color: #6b5a4a;
