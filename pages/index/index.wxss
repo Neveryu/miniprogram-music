@@ -130,17 +130,105 @@ movable-view image {
   overflow: hidden;
 }
 
-/* 儿歌模式标识：随歌名行内展示，全房间用户实时可见 */
-.children-mode-badge {
-  display: inline-block;
-  margin-left: 8px;
-  padding: 1px 8px;
-  font-size: 11px;
-  font-weight: 600;
-  color: #ffffff;
-  background: linear-gradient(180deg, #ffb84d 0%, #f2913d 100%);
-  border-radius: 999px;
-  vertical-align: 2px;
+/* ===== 儿歌模式播放器特效：彩色流光 + 跑马灯 ===== */
+
+/* 顶部长条播放器：彩虹流光背景 + 呼吸彩色光晕 */
+.children-player {
+  box-sizing: border-box;
+  border: 3px solid rgba(255, 255, 255, 0.9);
+  background: linear-gradient(120deg, #6a5bd8 0%, #c4458f 20%, #d9862e 40%, #2e9e73 60%, #3a7bd5 80%, #6a5bd8 100%);
+  background-size: 400% 400%;
+  animation: fadeIn 0.3s, childrenFlowBg 8s ease-in-out infinite, childrenGlow 2.6s ease-in-out infinite;
+}
+
+/* 圆形悬浮播放器：同样的流光配色 */
+.children-player-circle {
+  background: linear-gradient(120deg, #6a5bd8 0%, #c4458f 20%, #d9862e 40%, #2e9e73 60%, #3a7bd5 80%, #6a5bd8 100%);
+  background-size: 400% 400%;
+  animation: fadeIn 0.3s, childrenFlowBg 8s ease-in-out infinite, childrenGlow 2.6s ease-in-out infinite;
+}
+
+@keyframes childrenFlowBg {
+  0% {
+    background-position: 0% 50%;
+  }
+
+  50% {
+    background-position: 100% 50%;
+  }
+
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+@keyframes childrenGlow {
+  0%,
+  100% {
+    box-shadow: 0 0 16px 4px rgba(255, 107, 157, 0.9);
+  }
+
+  33% {
+    box-shadow: 0 0 22px 8px rgba(255, 184, 77, 0.95);
+  }
+
+  66% {
+    box-shadow: 0 0 22px 8px rgba(124, 196, 255, 0.95);
+  }
+}
+
+/* 长条播放器：上下两排跑马灯 */
+.children-marquee {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  pointer-events: none;
+  z-index: 9;
+}
+
+.children-marquee-top {
+  top: 4px;
+}
+
+.children-marquee-bottom {
+  bottom: 4px;
+}
+
+.children-marquee-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 100%;
+  background: #ffd966;
+  box-shadow: 0 0 6px rgba(255, 255, 255, 0.95);
+  animation: childrenBlinkScale 1.5s ease-in-out infinite;
+}
+
+.children-marquee-dot:nth-child(4n+2) {
+  background: #ff8fa3;
+}
+
+.children-marquee-dot:nth-child(4n+3) {
+  background: #7ed6a5;
+}
+
+.children-marquee-dot:nth-child(4n) {
+  background: #7cc4ff;
+}
+
+@keyframes childrenBlinkScale {
+  0%,
+  100% {
+    opacity: 0.3;
+    transform: scale(0.72);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1.18);
+  }
 }
 
 .bbbug_player_singer {

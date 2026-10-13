@@ -102,23 +102,32 @@
   <view class="bbbug_cover" wx:if="{{!userInfo || userInfo.user_id<0}}" bindtap="login">点击登录后加入互动吧</view>
 
   <!-- 播放器(顶部固定长条) -->
-  <view class="bbbug_player" bindtap="showSongMenu" bindlongpress="setSimplePlayer" wx:if="{{!simplePlayer}}">
+  <view class="bbbug_player {{roomInfo.children_mode ? 'children-player' : ''}}" bindtap="showSongMenu" bindlongpress="setSimplePlayer" wx:if="{{!simplePlayer}}">
     <view wx:if="{{songInfo}}">
       <image class="bbbug_player_img {{isMusicPlaying ? 'music-cover-playing' : ''}}" src="{{playerPicError ? '/res/image/nohead.jpg' : helper.getStaticUrl(songInfo.song.pic)}}" mode="widthFix" binderror="onPlayerPicError"></image>
       <image class="bbbug_player_outer" src="/res/image/player_bg.png" mode="widthFix"></image>
       <image class="bbbug_player_bar" src="/res/image/player_bar.png" mode="widthFix"></image>
-      <view class="bbbug_player_song">{{songInfo.song.name}} - {{songInfo.song.singer}}<text wx:if="{{roomInfo.children_mode}}" class="children-mode-badge">🎈 儿歌模式</text></view>
+      <view class="bbbug_player_song">{{songInfo.song.name}} - {{songInfo.song.singer}}</view>
       <view class="bbbug_player_singer">{{lrcString}}</view>
       <view class="bbbug_player_user">点歌人 {{helper.urldecode(songInfo.user.user_name)}}</view>
     </view>
     <view wx:if="{{!songInfo}}">
       <view class="bbbug_player_tips">播放器加载中</view>
     </view>
+    <!-- 儿歌模式：上下跑马灯 -->
+    <block wx:if="{{roomInfo.children_mode}}">
+      <view class="children-marquee children-marquee-top">
+        <view wx:for="{{[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15]}}" wx:key="*this" class="children-marquee-dot" style="animation-delay: -{{item * 100}}ms;"></view>
+      </view>
+      <view class="children-marquee children-marquee-bottom">
+        <view wx:for="{{[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15]}}" wx:key="*this" class="children-marquee-dot" style="animation-delay: -{{item * 100}}ms;"></view>
+      </view>
+    </block>
   </view>
   
   <!-- 播放器(圆形) -->
   <movable-area>
-    <movable-view inertia="true" direction="all" bindtap="showSongMenu" bindlongpress="setSimplePlayer"
+    <movable-view class="{{roomInfo.children_mode ? 'children-player-circle' : ''}}" inertia="true" direction="all" bindtap="showSongMenu" bindlongpress="setSimplePlayer"
       wx:if="{{simplePlayer}}">
       <image class="player_bg" src="../../res/image/player_bg.png"></image>
       <view>
