@@ -107,7 +107,7 @@
       <image class="bbbug_player_img {{isMusicPlaying ? 'music-cover-playing' : ''}}" src="{{playerPicError ? '/res/image/nohead.jpg' : helper.getStaticUrl(songInfo.song.pic)}}" mode="widthFix" binderror="onPlayerPicError"></image>
       <image class="bbbug_player_outer" src="/res/image/player_bg.png" mode="widthFix"></image>
       <image class="bbbug_player_bar" src="/res/image/player_bar.png" mode="widthFix"></image>
-      <view class="bbbug_player_song">{{songInfo.song.name}} - {{songInfo.song.singer}}</view>
+      <view class="bbbug_player_song">{{songInfo.song.name}} - {{songInfo.song.singer}}<text wx:if="{{roomInfo.children_mode}}" class="children-mode-badge">🎈 儿歌模式</text></view>
       <view class="bbbug_player_singer">{{lrcString}}</view>
       <view class="bbbug_player_user">点歌人 {{helper.urldecode(songInfo.user.user_name)}}</view>
     </view>

@@ -173,7 +173,9 @@ Component({
     categories: CATEGORIES,
     activeKey: 'classic',
     activeCategory: CATEGORIES[0],
-    requesting: false
+    requesting: false,
+    childrenMode: false,
+    toggling: false
   },
   /**
    * 组件的方法列表
@@ -188,6 +190,59 @@ Component({
       })
       wx.setNavigationBarTitle({
         title: '儿歌乐园'
+      })
+      this.loadRoomMode()
+    },
+    // 读取房间儿歌模式状态，初始化按钮显示
+    loadRoomMode() {
+      if (app.globalData.roomInfo) {
+        this.setData({ childrenMode: !!app.globalData.roomInfo.children_mode })
+      }
+      app.request({
+        url: 'room/getRoomInfo',
+        data: {},
+        success: (res) => {
+          this.setData({ childrenMode: !!(res.data && res.data.children_mode) })
+        },
+        error: () => {
+          return true
+        }
+      })
+    },
+    // 一键儿歌：开启后清空待播队列立即播放儿歌，自动补歌切换为儿歌关键词池
+    toggleChildrenMode() {
+      if (!app.globalData.userInfo) {
+        wx.showToast({ title: '登录后即可开启儿歌模式', icon: 'none' })
+        return
+      }
+      if (this.data.toggling) {
+        return
+      }
+      this.setData({ toggling: true })
+      const next = !this.data.childrenMode
+      app.request({
+        url: 'room/setChildrenMode',
+        loading: next ? '正在开启' : '正在关闭',
+        data: { enabled: next },
+        success: (res) => {
+          this.setData({
+            childrenMode: !!(res.data && res.data.children_mode),
+            toggling: false
+          })
+          wx.showToast({ title: res.msg || '操作成功', icon: 'none' })
+          if (next) {
+            setTimeout(() => wx.navigateBack(), 800)
+          }
+        },
+        error: (response) => {
+          this.setData({ toggling: false })
+          wx.showToast({ title: response.msg || '操作失败，请重试', icon: 'none' })
+          return true
+        },
+        fail: () => {
+          this.setData({ toggling: false })
+          wx.showToast({ title: '操作失败，请重试', icon: 'none' })
+        }
       })
     },
     switchCategory(e) {

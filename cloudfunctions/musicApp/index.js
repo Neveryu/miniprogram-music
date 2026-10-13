@@ -14,6 +14,38 @@ const MUSIC_SOURCES = ['netease', 'tencent', 'kugou', 'wydt']
 const DEFAULT_SEARCH_PROMPTS = ['周杰伦', '流行歌曲', '经典歌曲', '精选']
 // 自动补歌来源权重（收藏 / 缓存 / 提示词），候选按权重随机混入队列
 const REFILL_SOURCE_WEIGHTS = { favorite: 5, cache: 3, prompt: 2 }
+// 一键儿歌：云端儿歌关键词池（与前端儿歌乐园曲库同源），儿歌模式下自动补歌从中随机抽词搜索
+const CHILDREN_SONG_KEYWORDS = [
+  // 经典儿歌
+  '小星星 儿歌', '两只老虎 儿歌', '小燕子 儿歌', '拔萝卜 儿歌', '找朋友 儿歌', '数鸭子 儿歌',
+  '丢手绢 儿歌', '世上只有妈妈好 儿歌', '小白船 儿歌', '卖报歌 儿歌', '一分钱 儿歌',
+  '上学歌 儿歌', '读书郎 儿歌', '娃哈哈 儿歌', '我的好妈妈 儿歌', '劳动最光荣',
+  // 摇篮曲
+  '勃拉姆斯 摇篮曲', '舒伯特 摇篮曲', '月儿明 风儿静 摇篮曲', '宝贝宝贝 贝瓦儿歌',
+  '虫儿飞 儿歌', '摇啊摇 摇到外婆桥',
+  // 动物朋友
+  '小兔子乖乖 儿歌', '蜗牛与黄鹂鸟 儿歌', '小毛驴 儿歌', '小螺号 儿歌', '捉泥鳅 儿歌',
+  '小乌鸦爱妈妈', '一只哈巴狗 儿歌', '大象 儿歌',
+  // 国学启蒙
+  '三字经 儿歌', '弟子规 儿歌', '咏鹅 谷建芬', '静夜思 谷建芬', '春晓 谷建芬',
+  '悯农 谷建芬', '游子吟 谷建芬',
+  // 英文儿歌
+  'Twinkle Twinkle Little Star 儿歌', 'Old MacDonald Had a Farm', 'ABC Song 儿歌',
+  'Bingo song 儿歌', 'The Wheels On The Bus 儿歌', 'Jingle Bells 儿歌', 'Five Little Ducks',
+  'Baby Shark', 'Finger Family', 'Five Little Monkeys', 'Rain Rain Go Away', 'Baa Baa Black Sheep',
+  // 律动儿歌
+  '健康歌 范晓萱', '幸福拍手歌 儿歌', '爱我你就抱抱我', '小手拍拍 儿歌',
+  // 动画经典
+  '黑猫警长 主题曲', '葫芦娃 儿歌', '舒克和贝塔 主题曲', '大风车 主题曲', '蓝精灵之歌',
+  '白龙马 儿歌', '大头儿子和小头爸爸 主题曲', '聪明的一休 主题曲',
+  // 节日日常
+  '新年好 儿歌', '恭喜恭喜 儿歌', '刷牙歌 儿歌', '爷爷为我打月饼'
+]
+// 儿歌模式：聚合类关键词，搜索返回整批儿歌合集，是儿歌多样性的主力来源
+const CHILDREN_AGGREGATE_KEYWORDS = [
+  '儿歌', '儿歌多多', '贝乐虎儿歌', '宝宝巴士儿歌', '贝瓦儿歌', '亲宝儿歌', '火火兔儿歌',
+  '经典儿歌大全', '睡前儿歌', '早教儿歌', '英文儿歌', '中文儿歌', '热门儿歌', '新儿歌'
+]
 // 游客（未登录）可访问的只读接口：浏览房间、消息、队列、搜索、歌词与播放地址
 const GUEST_ACTIONS = [
   'room/getRoomInfo',
@@ -460,6 +492,10 @@ const getDefaultRoom = async (user) => {
     roomDefaults.recent_played = []
     room.recent_played = []
   }
+  if (typeof room.children_mode !== 'boolean') {
+    roomDefaults.children_mode = false
+    room.children_mode = false
+  }
   if (typeof room.refill_lock_until !== 'number') {
     roomDefaults.refill_lock_until = 0
     roomDefaults.refill_status = 'idle'
@@ -775,13 +811,13 @@ const filterPlayableSongs = async (songs, existingKeys, limit) => {
 }
 
 const addBackupSong = async (song, source, index) => {
+  const autoUser = source === 'favorite' ? { ...AUTO_SONG_USER, user_name: '收藏歌曲' }
+    : source === 'children' ? { ...AUTO_SONG_USER, user_name: '儿歌电台' }
+      : AUTO_SONG_USER
   const queueItem = {
     room_id: DEFAULT_ROOM_ID,
     song,
-    user: source === 'favorite' ? {
-      ...AUTO_SONG_USER,
-      user_name: '收藏歌曲'
-    } : AUTO_SONG_USER,
+    user: autoUser,
     sort_time: Date.now() + index,
     auto_added: true,
     backup_source: source,
@@ -830,21 +866,25 @@ const refillQueue = async (payload, user) => {
   try {
     const currentQueue = await getQueueSongs()
     const existingKeys = new Set(currentQueue.map((item) => `${normalizeMusicSource(item.song && item.song.source)}:${item.song && item.song.mid}`))
-    // 排除最近已播歌曲，避免播完出队后被立刻再次补入
-    ;(Array.isArray(room.recent_played) ? room.recent_played : []).forEach((key) => existingKeys.add(key))
+    // 儿歌模式下已播歌曲不排除（儿歌本就适合重复收听），其余模式排除最近 20 首已播
+    if (!room.children_mode) {
+      ;(Array.isArray(room.recent_played) ? room.recent_played : []).forEach((key) => existingKeys.add(key))
+    }
     const needed = target - currentQueue.length
     const added = []
-    // 三个来源并行准备可播放候选（各自随机打乱、排除已选）
-    const [favoritePool, cachePool, promptPool] = await Promise.all([
-      getFavoriteSongs(user).then((songs) => filterPlayableSongs(songs, existingKeys, needed)),
-      filterPlayableSongs(shuffleSongs(room.backup_songs.map((song) => {
+    // 儿歌模式：候选全部来自儿歌关键词池；正常模式：收藏 / 缓存 / 提示词三来源并行准备
+    const childrenKeywords = room.children_mode ? pickChildrenKeywords() : []
+    const [favoritePool, cachePool, promptPool, childrenPool] = await Promise.all([
+      room.children_mode ? Promise.resolve([]) : getFavoriteSongs(user).then((songs) => filterPlayableSongs(songs, existingKeys, needed)),
+      room.children_mode ? Promise.resolve([]) : filterPlayableSongs(shuffleSongs(room.backup_songs.map((song) => {
         try {
           return validateSong(song)
         } catch (error) {
           return null
         }
       })), existingKeys, needed),
-      findPromptSongs(room, existingKeys, needed).then((songs) => filterPlayableSongs(songs, existingKeys, needed))
+      room.children_mode ? Promise.resolve([]) : findPromptSongs(room, existingKeys, needed).then((songs) => filterPlayableSongs(songs, existingKeys, needed)),
+      room.children_mode ? findChildrenSongs(childrenKeywords, existingKeys, needed).then((songs) => filterPlayableSongs(songs, existingKeys, needed)) : Promise.resolve([])
     ])
     // 提示词搜索成功时刷新房间缓存
     if (promptPool.length) {
@@ -855,8 +895,10 @@ const refillQueue = async (payload, user) => {
         }
       })
     }
-    // 按权重随机混入三个来源，避免单一来源独占补歌
-    const pools = [
+    // 按权重随机混入来源：儿歌模式单一来源，正常模式三来源加权
+    const pools = room.children_mode ? [
+      { source: 'children', weight: 1, songs: childrenPool }
+    ] : [
       { source: 'favorite', weight: REFILL_SOURCE_WEIGHTS.favorite, songs: favoritePool },
       { source: 'cache', weight: REFILL_SOURCE_WEIGHTS.cache, songs: cachePool },
       { source: 'prompt', weight: REFILL_SOURCE_WEIGHTS.prompt, songs: promptPool }
@@ -1054,6 +1096,89 @@ const findPromptSongs = async (room, existingKeys, limit) => {
   }
 }
 
+// 儿歌模式：随机抽 1 个聚合词（搜出整批儿歌合集）+ 2 个具体歌名词，纯随机无记忆
+const pickAggregateKeyword = () => shuffleSongs(CHILDREN_AGGREGATE_KEYWORDS)[0]
+const pickChildrenKeywords = () => shuffleSongs([
+  pickAggregateKeyword(),
+  ...shuffleSongs(CHILDREN_SONG_KEYWORDS).slice(0, 2)
+])
+
+// 儿歌模式：按关键词搜索儿歌，返回随机排序的候选
+const searchChildrenKeyword = async (keyword, existingKeys, limit) => {
+  try {
+    const result = await requestMusicApi({
+      server: 'netease',
+      type: 'search',
+      id: keyword
+    }, JSON.parse, 1500)
+    const songs = Array.isArray(result) ? result.map((item) => normalizeMusicItem(item, 'netease')).filter(Boolean) : []
+    return shuffleSongs(songs.filter((song) => !existingKeys.has(`${song.source}:${song.mid}`))).slice(0, Math.max(limit, 1))
+  } catch (error) {
+    return []
+  }
+}
+
+// 儿歌模式：多词并行搜索汇总候选
+const findChildrenSongs = async (keywords, existingKeys, limit) => {
+  if (!keywords.length || limit <= 0) {
+    return []
+  }
+  const groups = await Promise.all(keywords.map((keyword) => searchChildrenKeyword(keyword, existingKeys, Math.max(limit, 2))))
+  return shuffleSongs(groups.flat())
+}
+
+// 一键儿歌：开启时清空待播队列并立即播放一首儿歌，后续自动补歌全部来自儿歌关键词池
+const setChildrenMode = async (payload, user) => {
+  const room = await getDefaultRoom(user)
+  if (!payload.enabled) {
+    if (room.children_mode) {
+      await db.collection('rooms').doc(room._id).update({
+        data: {
+          children_mode: false,
+          updated_at: db.serverDate()
+        }
+      })
+      // 退出时清空待播队列（与开启行为对称），当前歌曲播完后由正常模式三来源重新补歌
+      await db.collection('play_queue').where({ room_id: DEFAULT_ROOM_ID }).remove()
+    }
+    return success({ children_mode: false }, '儿歌模式已关闭')
+  }
+  // 先置位再清空队列：后续由前端 watch / 定时器触发的补歌自动走儿歌关键词池
+  await db.collection('rooms').doc(room._id).update({
+    data: {
+      children_mode: true,
+      updated_at: db.serverDate()
+    }
+  })
+  await db.collection('play_queue').where({ room_id: DEFAULT_ROOM_ID }).remove()
+  // 立即播放一首儿歌：随机抽聚合词搜索取第一首（不做地址预验证，播放资源失效时前端会自动重解析）
+  const keyword = pickAggregateKeyword()
+  const songs = keyword ? await searchChildrenKeyword(keyword, new Set(), 1) : []
+  if (!songs.length) {
+    return success({ children_mode: true }, '儿歌模式已开启，正在准备儿歌')
+  }
+  const song = songs[0]
+  const queueItem = {
+    room_id: DEFAULT_ROOM_ID,
+    song,
+    user: { ...AUTO_SONG_USER, user_name: '儿歌电台' },
+    sort_time: Date.now(),
+    auto_added: true,
+    backup_source: 'children',
+    created_at: db.serverDate()
+  }
+  const created = await db.collection('play_queue').add({ data: queueItem })
+  await db.collection('rooms').where({ room_id: DEFAULT_ROOM_ID }).update({
+    data: {
+      current_song: _.set({ ...queueItem, _id: created._id, since: Math.floor(Date.now() / 1000) }),
+      recent_played: buildRecentPlayed(room, song),
+      auto_refill_paused: false,
+      updated_at: db.serverDate()
+    }
+  })
+  return success({ children_mode: true }, '儿歌模式已开启')
+}
+
 const updateSearchPrompts = async (payload, user) => {
   const room = await ensureDefaultRoom(user)
   if (room.room_user !== user._id) {
@@ -1078,6 +1203,7 @@ const handlers = {
   'room/getRoomInfo': async (payload, user) => success(await getDefaultRoom(user)),
   'room/getSearchPrompts': async (payload, user) => success(normalizeSearchPrompts((await getDefaultRoom(user)).search_prompts)),
   'room/updateSearchPrompts': updateSearchPrompts,
+  'room/setChildrenMode': setChildrenMode,
   'app/getRealtimeState': getRealtimeState,
   'message/getMessageList': getMessageList,
   'message/send': sendMessage,

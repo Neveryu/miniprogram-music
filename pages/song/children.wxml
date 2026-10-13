@@ -54,11 +54,15 @@
     </view>
   </view>
 
-  <!-- 底部随机点歌 -->
+  <!-- 底部操作：一键儿歌 + 随机点歌 -->
   <view class="random-bar">
-    <view class="random-btn" bindtap="randomSong" hover-class="random-pressed" hover-stay-time="80">
+    <view class="random-btn random-sub" bindtap="randomSong" hover-class="random-pressed" hover-stay-time="80">
       <text class="random-dice">🎲</text>
-      <text>随机来一首</text>
+      <text>随机</text>
+    </view>
+    <view class="random-btn {{childrenMode ? 'children-on' : ''}} {{toggling ? 'toggling' : ''}}" bindtap="toggleChildrenMode" hover-class="random-pressed" hover-stay-time="80">
+      <text class="random-dice">{{childrenMode ? '🎈' : '🎵'}}</text>
+      <text>{{childrenMode ? '退出儿歌模式' : '一键儿歌'}}</text>
     </view>
   </view>
 </view>

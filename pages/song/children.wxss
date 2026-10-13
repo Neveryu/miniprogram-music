@@ -323,12 +323,16 @@
   left: 0;
   right: 0;
   bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
   padding: 20rpx 40rpx calc(24rpx + env(safe-area-inset-bottom));
   background: linear-gradient(180deg, rgba(255, 247, 232, 0) 0%, #fff7e8 40%);
   z-index: 30;
 }
 
 .random-btn {
+  flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -337,11 +341,30 @@
   font-weight: 800;
   letter-spacing: 4rpx;
   color: #ffffff;
-  background: linear-gradient(180deg, #ffd966 0%, #ffb800 100%);
+  background: linear-gradient(180deg, #ff8f6b 0%, #f2634e 100%);
   border: 4rpx solid #4a3428;
   border-radius: 999rpx;
   box-shadow: 0 8rpx 0 rgba(74, 52, 40, 0.9);
   animation: float-bob 2.8s ease-in-out infinite;
+}
+
+/* 次按钮：随机点歌，白底贴纸风 */
+.random-sub {
+  flex: 0 0 200rpx;
+  font-size: 28rpx;
+  letter-spacing: 2rpx;
+  color: #e85d30;
+  background: #ffffff;
+}
+
+/* 儿歌模式开启中：按钮转为薄荷绿 */
+.children-on {
+  background: linear-gradient(180deg, #7ddba3 0%, #46b578 100%);
+}
+
+/* 切换中禁用浮动动画，避免按压反馈冲突 */
+.toggling {
+  animation: none;
 }
 
 .random-dice {

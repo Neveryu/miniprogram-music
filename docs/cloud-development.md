@@ -48,7 +48,7 @@ cloudfunctions/musicApp
 | 集合 | 用途 | 关键字段 | 推荐索引 |
 | --- | --- | --- | --- |
 | `users` | 微信用户和资料 | `_openid`、`user_name`、`user_head`、`user_sex` | `_openid` 唯一 |
-| `rooms` | 唯一默认房间、当前歌曲和自动补歌状态 | `room_id`、`room_name`、`room_user`、`current_song`、`search_prompts`、`backup_songs`、`refill_lock_until`、`auto_refill_paused` | `room_id` 唯一 |
+| `rooms` | 唯一默认房间、当前歌曲和自动补歌状态 | `room_id`、`room_name`、`room_user`、`current_song`、`search_prompts`、`backup_songs`、`refill_lock_until`、`auto_refill_paused`、`children_mode` | `room_id` 唯一 |
 | `messages` | 文本、图片、语音和引用消息 | `room_id`、`payload`、`created_timestamp` | `room_id + created_timestamp` |
 | `play_queue` | 待播放队列 | `room_id`、`song`、`sort_time`、`auto_added`、`backup_source` | `room_id + sort_time` |
 | `playlists` | 用户歌曲收藏 | `_openid`、`source`、`mid`、`song` | `_openid + source + mid` 唯一 |
@@ -124,7 +124,7 @@ QQ 播放地址由云函数按 `songmid` 调用 `meting.mikus.ink` 的 `type=son
 wss://xin.hanxin.vip/server/{serverId}/{sessionId}/websocket
 ```
 
-云函数还支持定时触发器 `refillPlaybackQueue`：周期性检查默认房间播放队列，不足时按「用户收藏 → 房间缓存 → 搜索提示词」顺序自动补歌。
+云函数还支持定时触发器 `refillPlaybackQueue`：周期性检查默认房间播放队列，不足时按「用户收藏 / 房间缓存 / 搜索提示词」加权（5:3:2）自动补歌；房间开启儿歌模式（`room/setChildrenMode`）后，自动补歌改为从云端儿歌关键词池随机抽词搜索补入。
 
 详细请求 destination、握手顺序和返回字段见 [meting-api.md](./meting-api.md)。云函数仍负责把普通歌曲和播放资源转换为项目统一歌曲结构。
 
