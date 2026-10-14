@@ -13,7 +13,10 @@ Component({
     room_id: 0,
     page: 1,
     isLoading: false,
-    hasMore: true
+    hasMore: true,
+    // 分类筛选：normal 我的歌曲 / children 儿歌，两者互斥
+    filter: 'normal',
+    marking: false
   },
   /**
    * 组件的方法列表
@@ -49,6 +52,64 @@ Component({
         this.getSongList()
       }
     },
+    // 切换「我的歌曲 / 儿歌」分类
+    switchTab(e) {
+      const filter = e.currentTarget.dataset.tab
+      // 加载中不切换，避免旧请求结果覆盖新分类列表
+      if (filter === this.data.filter || this.data.isLoading) {
+        return
+      }
+      this.setData({
+        filter: filter,
+        songList: []
+      })
+      this.data.page = 1
+      this.data.hasMore = true
+      this.getSongList()
+    },
+    // 在「我的歌曲」与「儿歌」两个互斥分类之间移动收藏歌曲
+    toggleChildrenFlag(e) {
+      const song = e.mark.item
+      if (!song || this.data.marking) {
+        return
+      }
+      const nextChildren = !song.children
+      this.data.marking = true
+      app.request({
+        url: 'song/toggleMySongChildren',
+        data: {
+          mid: song.mid,
+          source: song.source,
+          children: nextChildren
+        },
+        success: () => {
+          this.data.marking = false
+          wx.showToast({
+            title: nextChildren ? '已加入儿歌' : '已移出儿歌',
+            icon: 'none'
+          })
+          // 两个分类互斥：加入或移出后该首都会离开当前列表
+          this.setData({
+            songList: this.data.songList.filter((item) => !(item.mid == song.mid && item.source == song.source))
+          })
+        },
+        error: (response) => {
+          this.data.marking = false
+          wx.showToast({
+            title: response.msg || '操作失败，请重试',
+            icon: 'none'
+          })
+          return true
+        },
+        fail: () => {
+          this.data.marking = false
+          wx.showToast({
+            title: '操作失败，请重试',
+            icon: 'none'
+          })
+        }
+      })
+    },
     getSongList() {
       if (this.data.isLoading) {
         return
@@ -58,7 +119,8 @@ Component({
         url: 'song/mySongList',
         loading: '加载中',
         data: {
-          page: this.data.page
+          page: this.data.page,
+          filter: this.data.filter
         },
         success: (res) => {
           let songList = this.data.songList

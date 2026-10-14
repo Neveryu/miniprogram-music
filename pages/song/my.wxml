@@ -1,10 +1,18 @@
 <!-- <wxs src="../../utils/helper.wxs" module="helper" /> -->
 <view wx:if="{{bbbug}}">
+  <!-- 分类筛选：我的歌曲 / 儿歌，两者互斥 -->
+  <view class="filter-bar">
+    <view class="filter-item {{filter === 'normal' ? 'active' : ''}}" data-tab="normal" bindtap="switchTab">我的歌曲</view>
+    <view class="filter-item {{filter === 'children' ? 'active' : ''}}" data-tab="children" bindtap="switchTab">儿歌</view>
+  </view>
+  <!-- 占位：抵消固定 tab 高度 -->
+  <view class="filter-holder"></view>
+
   <view wx:if="{{songList.length==0}}">
     <view class="tipImage">
       <image class="img" src="/res/image/alert.png" />
     </view>
-    <view class="tipText">你还没收藏或点过歌,快去点歌吧</view>
+    <view class="tipText">{{filter === 'children' ? '还没有儿歌收藏，在「我的歌曲」里点右侧「加入儿歌」加入吧' : '你还没收藏或点过歌,快去点歌吧'}}</view>
   </view>
   <view class="weui-panel weui-panel_access songList" wx:if="{{songList.length>0}}">
     <view class="weui-panel__bd">
@@ -17,6 +25,11 @@
           <view class="weui-media-box__desc">
             <span style="color:orangered;margin-right:3px;">({{item.played}})</span>{{item.singer}}
           </view>
+        </view>
+        <view class="children-switch" hover-class="children-switch-hover" hover-stay-time="80" catchtap="toggleChildrenFlag" mark:item="{{item}}">
+          <text class="switch-arrow" wx:if="{{filter === 'children'}}">‹</text>
+          <text class="switch-text">{{filter === 'children' ? '移出儿歌' : '加入儿歌'}}</text>
+          <text class="switch-arrow" wx:if="{{filter !== 'children'}}">›</text>
         </view>
       </view>
     </view>

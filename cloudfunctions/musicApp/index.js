@@ -14,6 +14,8 @@ const MUSIC_SOURCES = ['netease', 'tencent', 'kugou', 'wydt']
 const DEFAULT_SEARCH_PROMPTS = ['周杰伦', '流行歌曲', '经典歌曲', '精选']
 // 自动补歌来源权重（收藏 / 缓存 / 提示词），候选按权重随机混入队列
 const REFILL_SOURCE_WEIGHTS = { favorite: 5, cache: 3, prompt: 2 }
+// 儿歌模式补歌权重：儿歌收藏（用户精选）占主导，云端儿歌词池补充新鲜度
+const CHILDREN_REFILL_WEIGHTS = { favorite: 3, children: 2 }
 // 一键儿歌：云端儿歌关键词池（与前端儿歌乐园曲库同源），儿歌模式下自动补歌从中随机抽词搜索
 const CHILDREN_SONG_KEYWORDS = [
   // 经典儿歌
@@ -652,8 +654,34 @@ const addFavorite = async (payload, user) => {
 const favoriteList = async (payload, user) => {
   const page = Math.max(parseInt(payload.page, 10) || 1, 1)
   const pageSize = 30
-  const result = await db.collection('playlists').where({ _openid: user._openid }).orderBy('created_at', 'desc').skip((page - 1) * pageSize).limit(pageSize).get()
-  return success(result.data.map((item) => validateSong(item.song)))
+  // 「我的歌曲」与「儿歌」互斥：标记为儿歌的收藏不再出现在「我的歌曲」列表中
+  const where = { _openid: user._openid }
+  if (payload.filter === 'children') {
+    where.children = true
+  } else {
+    where.children = _.neq(true)
+  }
+  const result = await db.collection('playlists').where(where).orderBy('created_at', 'desc').skip((page - 1) * pageSize).limit(pageSize).get()
+  return success(result.data.map((item) => ({
+    ...validateSong(item.song),
+    // 儿歌分类标记：供收藏页列表右侧按钮显示状态
+    children: !!item.children
+  })))
+}
+
+// 收藏页：将收藏歌曲标记为儿歌或移出儿歌
+const toggleFavoriteChildren = async (payload, user) => {
+  const source = normalizeMusicSource(payload.source)
+  const result = await db.collection('playlists').where({ _openid: user._openid, mid: payload.mid }).get()
+  const targets = result.data.filter((item) => normalizeMusicSource(item.source) === source)
+  if (!targets.length) {
+    return failure('收藏不存在', 404)
+  }
+  const children = !!payload.children
+  await Promise.all(targets.map((item) => db.collection('playlists').doc(item._id).update({
+    data: { children }
+  })))
+  return success({ children }, children ? '已加入儿歌' : '已移出儿歌')
 }
 
 const deleteFavorite = async (payload, user) => {
@@ -784,8 +812,12 @@ const buildRecentPlayed = (room, song) => {
   return [key, ...existing.filter((item) => item !== key)].slice(0, 20)
 }
 
-const getFavoriteSongs = async (user) => {
-  const result = await db.collection('playlists').where({ _openid: user._openid }).orderBy('created_at', 'desc').limit(100).get()
+// 收藏候选：与收藏页「我的歌曲 / 儿歌」互斥分类保持一致
+// childrenOnly 为 true 时只取标记为儿歌的收藏，否则排除儿歌收藏
+const getFavoriteSongs = async (user, childrenOnly) => {
+  const where = { _openid: user._openid }
+  where.children = childrenOnly ? true : _.neq(true)
+  const result = await db.collection('playlists').where(where).orderBy('created_at', 'desc').limit(100).get()
   return shuffleSongs(result.data.map((item) => {
     try {
       return validateSong(item.song)
@@ -872,10 +904,11 @@ const refillQueue = async (payload, user) => {
     }
     const needed = target - currentQueue.length
     const added = []
-    // 儿歌模式：候选全部来自儿歌关键词池；正常模式：收藏 / 缓存 / 提示词三来源并行准备
+    // 儿歌模式：候选来自「儿歌收藏 + 云端儿歌词池」；正常模式：收藏 / 缓存 / 提示词三来源并行准备
     const childrenKeywords = room.children_mode ? pickChildrenKeywords() : []
     const [favoritePool, cachePool, promptPool, childrenPool] = await Promise.all([
-      room.children_mode ? Promise.resolve([]) : getFavoriteSongs(user).then((songs) => filterPlayableSongs(songs, existingKeys, needed)),
+      // 收藏来源与收藏页分类互斥：正常模式取「我的歌曲」，儿歌模式取「儿歌」
+      getFavoriteSongs(user, !!room.children_mode).then((songs) => filterPlayableSongs(songs, existingKeys, needed)),
       room.children_mode ? Promise.resolve([]) : filterPlayableSongs(shuffleSongs(room.backup_songs.map((song) => {
         try {
           return validateSong(song)
@@ -895,9 +928,10 @@ const refillQueue = async (payload, user) => {
         }
       })
     }
-    // 按权重随机混入来源：儿歌模式单一来源，正常模式三来源加权
+    // 按权重随机混入来源：儿歌模式两来源加权，正常模式三来源加权
     const pools = room.children_mode ? [
-      { source: 'children', weight: 1, songs: childrenPool }
+      { source: 'favorite', weight: CHILDREN_REFILL_WEIGHTS.favorite, songs: favoritePool },
+      { source: 'children', weight: CHILDREN_REFILL_WEIGHTS.children, songs: childrenPool }
     ] : [
       { source: 'favorite', weight: REFILL_SOURCE_WEIGHTS.favorite, songs: favoritePool },
       { source: 'cache', weight: REFILL_SOURCE_WEIGHTS.cache, songs: cachePool },
@@ -1127,7 +1161,7 @@ const findChildrenSongs = async (keywords, existingKeys, limit) => {
   return shuffleSongs(groups.flat())
 }
 
-// 一键儿歌：开启时清空待播队列并立即播放一首儿歌，后续自动补歌全部来自儿歌关键词池
+// 一键儿歌：开启时清空待播队列并立即播放一首儿歌（优先取「儿歌」收藏），后续自动补歌走「儿歌收藏 + 云端词池」
 const setChildrenMode = async (payload, user) => {
   const room = await getDefaultRoom(user)
   if (!payload.enabled) {
@@ -1143,7 +1177,7 @@ const setChildrenMode = async (payload, user) => {
     }
     return success({ children_mode: false }, '儿歌模式已关闭')
   }
-  // 先置位再清空队列：后续由前端 watch / 定时器触发的补歌自动走儿歌关键词池
+  // 先置位再清空队列：后续由前端 watch / 定时器触发的补歌自动走「儿歌收藏 + 云端词池」
   await db.collection('rooms').doc(room._id).update({
     data: {
       children_mode: true,
@@ -1151,20 +1185,26 @@ const setChildrenMode = async (payload, user) => {
     }
   })
   await db.collection('play_queue').where({ room_id: DEFAULT_ROOM_ID }).remove()
-  // 立即播放一首儿歌：随机抽聚合词搜索取第一首（不做地址预验证，播放资源失效时前端会自动重解析）
-  const keyword = pickAggregateKeyword()
-  const songs = keyword ? await searchChildrenKeyword(keyword, new Set(), 1) : []
-  if (!songs.length) {
+  // 立即播放一首儿歌：优先取用户「儿歌」收藏，没有可用的再随机抽聚合词搜索
+  // 两者都不做地址预验证，播放资源失效时前端会自动重解析
+  let song = (await getFavoriteSongs(user, true))[0]
+  let backupSource = 'favorite'
+  if (!song) {
+    const keyword = pickAggregateKeyword()
+    const songs = keyword ? await searchChildrenKeyword(keyword, new Set(), 1) : []
+    song = songs[0]
+    backupSource = 'children'
+  }
+  if (!song) {
     return success({ children_mode: true }, '儿歌模式已开启，正在准备儿歌')
   }
-  const song = songs[0]
   const queueItem = {
     room_id: DEFAULT_ROOM_ID,
     song,
-    user: { ...AUTO_SONG_USER, user_name: '儿歌电台' },
+    user: { ...AUTO_SONG_USER, user_name: backupSource === 'favorite' ? '收藏歌曲' : '儿歌电台' },
     sort_time: Date.now(),
     auto_added: true,
-    backup_source: 'children',
+    backup_source: backupSource,
     created_at: db.serverDate()
   }
   const created = await db.collection('play_queue').add({ data: queueItem })
@@ -1223,6 +1263,7 @@ const handlers = {
   'song/addMySong': addFavorite,
   'song/mySongList': (payload, user) => favoriteList(payload, user),
   'song/deleteMySong': deleteFavorite,
+  'song/toggleMySongChildren': toggleFavoriteChildren,
   'song/remove': removeQueueSong,
   'song/push': pushQueueSong,
   'song/pass': passSong,

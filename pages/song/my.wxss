@@ -47,3 +47,110 @@
 .weui-media-box__desc {
   -webkit-line-clamp: 1;
 }
+
+/* 分类 tab：我的歌曲 / 儿歌 各占一半，固定顶部不随页面滚动 */
+.filter-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  height: 44px;
+  background-color: #ffffff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
+}
+
+/* 占位：抵消固定 tab 的高度，避免首条歌曲被遮挡 */
+.filter-holder {
+  height: 44px;
+}
+
+.filter-item {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  color: #999999;
+}
+
+.filter-item.active {
+  color: #ff4500;
+  font-weight: 600;
+}
+
+/* 选中态底部指示条 */
+.filter-item.active::after {
+  content: '';
+  position: absolute;
+  left: calc(50% - 20px);
+  bottom: 0;
+  width: 40px;
+  height: 3px;
+  border-radius: 2px;
+  background-color: #ff4500;
+}
+
+/* 列表行：为最右侧分类切换按钮预留空间，避免歌名/歌手压到按钮下方 */
+.songList .weui-media-box {
+  padding-right: 104px;
+}
+
+/* 行主体占满剩余宽度（weui 只给 _in-appmsg 变体定义了 flex:1，
+   这里补上并允许收缩，长歌名才会省略而不是把行撑开） */
+.songList .weui-media-box__bd {
+  flex: 1;
+  min-width: 0;
+}
+
+.songList .weui-media-box__title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 分类切换按钮：胶囊样式，文字说明 + 方向箭头，绝对贴住整行最右边缘
+   我的歌曲行「加入儿歌 ›」、儿歌行「‹ 移出儿歌」 */
+.children-switch {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  margin-top: -14px;
+  height: 28px;
+  padding: 0 10px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+  border-radius: 14px;
+  background-color: #f4f5f7;
+  border: 1px solid #e8eaed;
+  font-size: 12px;
+  line-height: 1;
+  color: #666666;
+}
+
+/* 箭头：指示歌曲去向，略大于文字以突出方向 */
+.switch-arrow {
+  margin: 0 3px;
+  font-size: 15px;
+  color: #999999;
+}
+
+.children-switch-hover {
+  background-color: #ebedf0;
+}
+
+@media (prefers-color-scheme: dark) {
+  .children-switch {
+    background-color: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.14);
+    color: #bbbbbb;
+  }
+
+  .children-switch-hover {
+    background-color: rgba(255, 255, 255, 0.16);
+  }
+}

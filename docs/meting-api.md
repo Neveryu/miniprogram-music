@@ -191,17 +191,17 @@ QQ 歌曲不持久化播放地址（`validateSong` 对 tencent 来源清空 `url
 
 ## 6. 自动补歌
 
-播放队列不足时（目标数量 1~5 首，默认 3 首），云函数 `refillQueue` 并行准备三个来源的可播放候选：
+播放队列不足时（目标数量 1~5 首，默认 3 首），云函数 `refillQueue` 并行准备三个来源的可播放候选（正常模式）：
 
-1. 当前用户收藏（`playlists`，最多取 100 条候选）。
+1. 当前用户「我的歌曲」收藏（`playlists` 中未标 `children` 的记录，最多取 100 条候选）；与收藏页「我的歌曲 / 儿歌」互斥分类一致，已标为儿歌的收藏不参与正常模式补歌。
 2. 房间缓存的备用歌曲（`rooms.backup_songs`，最多缓存 10 首）。
 3. 房间 `search_prompts` 随机提示词的网易云搜索结果。
 
-三个来源按权重 `REFILL_SOURCE_WEIGHTS`（favorite:cache:prompt = 5:3:2）随机混入队列，单一来源不再独占补歌；某来源为空时权重自动让渡给其余来源。候选歌曲先经 `filterPlayableSongs` 验证播放地址可解析（1.2 秒超时）才入队；入队项带 `auto_added: true` 和 `backup_source`（favorite/cache/prompt/children）标记。为避免反复补入同一批歌曲：收藏、缓存和提示词搜索候选均随机打乱后取样，且补歌会排除 `rooms.recent_played` 中记录的最近 20 首已播歌曲（歌曲成为当前播放时写入）。提示词搜索成功时同步刷新 `backup_songs` 缓存。补歌过程通过 `refill_lock_until`（15 秒锁）和 `refill_lock_token` 防止并发重复补充，并可通过定时触发器 `refillPlaybackQueue` 周期性执行。队列排空时房间进入 `auto_refill_paused` 状态，下次补歌或切歌时恢复。
+三个来源按权重 `REFILL_SOURCE_WEIGHTS`（favorite:cache:prompt = 5:3:2）随机混入队列，单一来源不再独占补歌；某来源为空时权重自动让渡给其余来源。收藏候选按收藏页「我的歌曲 / 儿歌」互斥分类取值：正常模式排除已标为儿歌的收藏，儿歌模式只取已标为儿歌的收藏。候选歌曲先经 `filterPlayableSongs` 验证播放地址可解析（1.2 秒超时）才入队；入队项带 `auto_added: true` 和 `backup_source`（favorite/cache/prompt/children）标记。为避免反复补入同一批歌曲：收藏、缓存和提示词搜索候选均随机打乱后取样，且补歌会排除 `rooms.recent_played` 中记录的最近 20 首已播歌曲（歌曲成为当前播放时写入）。提示词搜索成功时同步刷新 `backup_songs` 缓存。补歌过程通过 `refill_lock_until`（15 秒锁）和 `refill_lock_token` 防止并发重复补充，并可通过定时触发器 `refillPlaybackQueue` 周期性执行。队列排空时房间进入 `auto_refill_paused` 状态，下次补歌或切歌时恢复。
 
 ### 儿歌模式（一键儿歌）
 
-任意登录用户调用 `room/setChildrenMode`（`enabled: true`）开启：房间 `children_mode` 置位 → 待播队列清空 → 从聚合关键词池 `CHILDREN_AGGREGATE_KEYWORDS`（儿歌、儿歌多多、贝乐虎儿歌、宝宝巴士儿歌等 14 个，搜索返回整批儿歌合集）随机抽词搜索网易云，取第一首立即设为当前播放。此后 `refillQueue` 检测到 `children_mode` 时跳过三来源加权，候选全部来自儿歌关键词：每次抽 1 个聚合词 + 2 个具体歌名词（`CHILDREN_SONG_KEYWORDS` 约 66 个）并行搜索汇总，纯随机无记忆。儿歌模式下不排除 `recent_played` 已播歌曲（儿歌适合重复收听），仅排除当前队列内已有的歌。关闭时复位 `children_mode` 并清空待播队列（与开启行为对称），当前歌曲播完后由正常模式三来源重新补歌。儿歌模式下手动点歌不受限制，自动补入项的 `backup_source` 为 `children`、点歌人显示为「儿歌电台」。
+任意登录用户调用 `room/setChildrenMode`（`enabled: true`）开启：房间 `children_mode` 置位 → 待播队列清空 → 立即播放一首儿歌，优先取用户「儿歌」收藏；没有可用收藏时回退到聚合关键词池 `CHILDREN_AGGREGATE_KEYWORDS`（儿歌、儿歌多多、贝乐虎儿歌、宝宝巴士儿歌等 14 个，搜索返回整批儿歌合集）随机抽词搜索网易云取第一首。两条来源都不做播放地址预验证。此后 `refillQueue` 检测到 `children_mode` 时跳过正常模式三来源，候选来自两个来源：用户「儿歌」收藏（`playlists` 中 `children: true` 的记录）与云端儿歌关键词搜索（每次抽 1 个聚合词 + 2 个具体歌名词，`CHILDREN_SONG_KEYWORDS` 65 个，并行搜索汇总，纯随机无记忆），两者按权重 `CHILDREN_REFILL_WEIGHTS`（favorite:children = 3:2）随机混入。儿歌模式下不排除 `recent_played` 已播歌曲（儿歌适合重复收听），仅排除当前队列内已有的歌。关闭时复位 `children_mode` 并清空待播队列（与开启行为对称），当前歌曲播完后由正常模式三来源重新补歌。儿歌模式下手动点歌不受限制，自动补入项的 `backup_source` 为 `children`（词池）或 `favorite`（儿歌收藏），点歌人显示为「儿歌电台」或「收藏歌曲」。
 
 ## 7. 管理能力
 
