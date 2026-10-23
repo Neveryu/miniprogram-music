@@ -11,7 +11,7 @@
 
 当前未配置备用回退接口（云函数中 `getFallbackMusicApiUrl` 返回空），主接口失败时直接向客户端返回错误。
 
-普通歌曲搜索、播放地址、封面和歌词由 `musicApp` 云函数访问；网易云歌单、用户及歌单歌曲详情由小程序通过 jusic-serve 的 WebSocket 通道访问。QQ 歌单和 QQ 用户歌单歌曲同样通过 jusic-serve 获取元数据，不拼接 Meting 播放地址；QQ 播放地址由 `musicApp` 云函数按 `songmid` 调用 `meting.mikus.ink` 的 `type=song` 详情接口动态解析（详见第 5 节）。
+普通歌曲搜索、播放地址、封面和歌词由 `musicApp` 云函数访问；网易云歌单、用户及歌单歌曲详情由小程序通过 jusic-serve 的 WebSocket 通道访问。QQ 歌单和 QQ 用户歌单歌曲同样通过 jusic-serve 获取元数据，不拼接 Meting 播放地址；QQ 播放地址在点歌时经 `/music/pick` 获取服务端下发的签名直链随歌曲入队，失效时才回退到 `meting.mikus.ink` 的 `type=song` 详情接口（详见第 5 节）。
 
 服务项目地址：
 
@@ -157,18 +157,20 @@ CONNECT\naccept-version:1.1,1.0\nheart-beat:0,0\n\n\\0
 | `song/search` | `musicApp` 云函数 → 对应平台 Meting-API `type=search` | 普通歌曲搜索（含网易云电台节目） |
 | `song/getLrc` | `musicApp` 云函数 → Meting-API `type=lrc` | 网易云歌词；QQ 与电台歌曲返回空歌词 |
 | `song/getUrl`（网易/酷狗） | `musicApp` 云函数 → Meting-API `type=url` 或详情接口 | 解析实际播放地址 |
-| `song/getUrl`（QQ） | `musicApp` 云函数 → `meting.mikus.ink` `type=song` 详情接口 | 按 `songmid` 动态解析带签名播放地址 |
+| `song/getUrl`（QQ） | 云函数优先返回点播下发的直链；失效时回退 `meting.mikus.ink` `type=song` | QQ 播放地址解析 |
 | 网易云歌单、用户及详情 | `jusicWsApi.js` → jusic-serve STOMP destination | 搜索资源和获取歌单歌曲 |
 | QQ 歌单、用户歌单及详情 | `jusicWsApi.js` → jusic-serve STOMP destination | 搜索资源和获取 QQ 歌单歌曲 |
 | 歌曲封面 | WS 或搜索结果中的封面字段 | 显示封面 |
 
 ### QQ 播放地址解析
 
-QQ 歌曲不持久化播放地址（`validateSong` 对 tencent 来源清空 `url` 字段）。播放时云函数执行 `resolveTencentMusicUrl`：
+QQ 搜索（`SEARCH`）只返回元数据，不带播放地址。点歌或播放时客户端先向 jusic-serve 的 `/music/pick` 发起点播，服务端在 `PICK` 帧中回传带签名的直链：
 
-1. 调用 `https://meting.mikus.ink/api?server=tencent&type=song&id={songmid}` 获取详情。
-2. 从返回数组中取出带 `url` 的条目，校验其 `url` 参数中的 `id` 与 `songmid` 一致，不一致视为资源不可用。
-3. 请求该签名 `url` 并跟随重定向，得到最终 HTTPS 音频地址。
+1. `jusicWsApi.pickQQSong(song)` 发送 `{ id: songmid, name, artist, duration, source: 'qq' }`。
+2. 在 `PICK` 帧的 `data` 数组里按 `id` 匹配当前歌曲，取其 `url`（HTTP 自动升级为 HTTPS）并随歌曲一起入队。
+3. 播放时云函数 `song/getUrl` 直接返回该直链（省去额外探测）；直链缺失时才回退 `resolveTencentMusicUrl` 调用 `meting.mikus.ink` 的 `type=song` 详情接口。直链签名过期时由播放器错误回调触发自动切歌。
+
+`validateSong` 对 tencent 来源保留点播下发的直链，拒绝 Meting 接口地址；直链缺失时仍存为空字符串，按 `songmid` 兜底解析。
 
 `type=song` 详情接口免鉴权且返回带签名的 `url`/`lrc` 地址，云函数对详情结果做 3 分钟短时缓存（`musicDetailCache`）避免重复请求；歌词解析同样复用该详情地址。
 
@@ -236,11 +238,11 @@ QQ 音乐接口受服务部署地区和音乐版权限制影响，项目当前�
 
 ## 10. 当前限制
 
-- `song/search` 按页面选择的平台搜索歌曲，支持 `netease`、`tencent`、`kugou` 和 `wydt`；当前没有备用回退接口，主接口失败直接报错。
+- `song/search` 按页面选择的平台搜索歌曲，支持 `netease`、`tencent` 和 `wydt`；酷狗入口已从搜歌页隐藏（公共 Meting 实例酷狗 `type=url` 全部失效）。当前没有备用回退接口，主接口失败直接报错。
 - QQ 歌单和 QQ 用户歌单歌曲通过 jusic-serve 返回 QQ `songmid`、歌曲名称、歌手、专辑、封面和时长，不在小程序侧拼接 Meting 地址。播放时由云函数按 `songmid` 调用 Meting 详情接口动态解析；如果 QQ 返回的歌曲需要登录、购买或受地区版权限制，云函数会返回“歌曲播放资源不可用”，不会把无效地址交给播放器。
 - `wydt` 电台节目必须在搜索结果中自带可播放 `url`，缺少播放地址的歌曲会被 `validateSong` 拒绝；电台节目不参与歌词解析，也不会进入自动补歌候选。
 - `song/getUrl` 仅在播放资源明确失效（HTTP 401/403/404/500 或重定向到 404 页）时重新解析地址，网络错误和超时不触发重解析。
-- 酷狗歌曲搜索和播放资源仍依赖 Meting 上游接口；酷狗封面可能返回 HTTP 500，云函数不持久化酷狗封面地址。正式发布前需要在目标云函数地区和实际设备上重新验证。
+- 酷狗接口保留在云函数中，但公共 Meting 实例的 `type=url` 已全部失效，搜歌页因此隐藏了酷狗入口；恢复前需要自建实例并配置有效的酷狗 Cookie/token，酷狗封面可能返回 HTTP 500，云函数不持久化酷狗封面地址。
 - Meting-API 的 `song`、`playlist` 和 `artist` 是通用数据类型；小程序的网易云歌单和用户资源页面使用 jusic-serve WebSocket，不直接调用这些 Meting-API action。
 - 播放地址可能因版权、Cookie、地区或临时 URL 失效。
 - `pic` 搜索结果可能返回 HTTP 地址，云函数会将其转换为 HTTPS；若上游不支持 HTTPS，封面仍可能加载失败。

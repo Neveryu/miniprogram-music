@@ -1,4 +1,5 @@
 const app = getApp();
+const jusicWsApi = require('../../utils/jusicWsApi.js')
 Component({
   /**
    * 组件的属性列表
@@ -142,6 +143,13 @@ Component({
         }
       })
     },
+    // QQ 收藏的播放地址可能缺失或过期，点歌/播放前重新取一次点播直链
+    resolvePickedSong(song) {
+      if (!song || song.source !== 'tencent') {
+        return Promise.resolve(song)
+      }
+      return jusicWsApi.pickQQSong(song)
+    },
     showMenu(e) {
       let song = e.mark.item
       let menu = ['点歌', '移除']
@@ -153,21 +161,25 @@ Component({
         success: (res) => {
           switch (menu[res.tapIndex]) {
             case '点歌':
-              app.request({
-                url: 'song/addSong',
-                loading: "点歌中",
-                data: {
-                  mid: song.mid,
-                  source: song.source,
-                  song: song,
-                  room_id: app.globalData.roomInfo.room_id
-                },
-                success: (res) => {
-                  // this.getSongList()
-                  wx.showToast({
-                    title: '点歌成功'
-                  })
-                }
+              this.resolvePickedSong(song).then((pickedSong) => {
+                app.request({
+                  url: 'song/addSong',
+                  loading: "点歌中",
+                  data: {
+                    mid: pickedSong.mid,
+                    source: pickedSong.source,
+                    song: pickedSong,
+                    room_id: app.globalData.roomInfo.room_id
+                  },
+                  success: (res) => {
+                    // this.getSongList()
+                    wx.showToast({
+                      title: '点歌成功'
+                    })
+                  }
+                })
+              }).catch((error) => {
+                wx.showToast({ title: error.message || '点歌失败', icon: 'none' })
               })
               break
             case '移除':
@@ -189,22 +201,26 @@ Component({
               })
               break
             case '播放':
-              app.request({
-                url: 'song/playSong',
-                data: {
-                  mid: song.mid,
-                  source: song.source,
-                  song: song,
-                  room_id: app.globalData.roomInfo.room_id
-                },
-                loading: '播放中',
-                success: (res) => {
-                  this.data.page = 1
-                  this.getSongList()
-                  wx.showToast({
-                    title: '播放成功'
-                  })
-                }
+              this.resolvePickedSong(song).then((pickedSong) => {
+                app.request({
+                  url: 'song/playSong',
+                  data: {
+                    mid: pickedSong.mid,
+                    source: pickedSong.source,
+                    song: pickedSong,
+                    room_id: app.globalData.roomInfo.room_id
+                  },
+                  loading: '播放中',
+                  success: (res) => {
+                    this.data.page = 1
+                    this.getSongList()
+                    wx.showToast({
+                      title: '播放成功'
+                    })
+                  }
+                })
+              }).catch((error) => {
+                wx.showToast({ title: error.message || '播放失败', icon: 'none' })
               })
               break
             default:

@@ -150,17 +150,36 @@ Component({
       })
     },
 
+    // QQ 歌曲需要先经 /music/pick 取服务端下发的播放直链
+    resolvePickedSong(song) {
+      if (!song || song.source !== 'tencent') {
+        return Promise.resolve(song)
+      }
+      wx.showLoading({ title: '准备中', mask: true })
+      return jusicWsApi.pickQQSong(song).then(pickedSong => {
+        wx.hideLoading()
+        return pickedSong
+      }).catch(error => {
+        wx.hideLoading()
+        throw error
+      })
+    },
+
     addSong(song) {
-      app.request({
-        url: 'song/addSong',
-        loading: '点歌中',
-        data: {
-          mid: song.mid,
-          source: song.source,
-          song,
-          room_id: app.globalData.roomInfo.room_id
-        },
-        success: () => wx.showToast({ title: '点歌成功' })
+      this.resolvePickedSong(song).then(pickedSong => {
+        app.request({
+          url: 'song/addSong',
+          loading: '点歌中',
+          data: {
+            mid: pickedSong.mid,
+            source: pickedSong.source,
+            song: pickedSong,
+            room_id: app.globalData.roomInfo.room_id
+          },
+          success: () => wx.showToast({ title: '点歌成功' })
+        })
+      }).catch(error => {
+        wx.showToast({ title: error.message || '点歌失败', icon: 'none' })
       })
     },
 
@@ -179,16 +198,20 @@ Component({
     },
 
     playSong(song) {
-      app.request({
-        url: 'song/playSong',
-        loading: '播放中',
-        data: {
-          mid: song.mid,
-          source: song.source,
-          song,
-          room_id: app.globalData.roomInfo.room_id
-        },
-        success: () => wx.showToast({ title: '播放成功' })
+      this.resolvePickedSong(song).then(pickedSong => {
+        app.request({
+          url: 'song/playSong',
+          loading: '播放中',
+          data: {
+            mid: pickedSong.mid,
+            source: pickedSong.source,
+            song: pickedSong,
+            room_id: app.globalData.roomInfo.room_id
+          },
+          success: () => wx.showToast({ title: '播放成功' })
+        })
+      }).catch(error => {
+        wx.showToast({ title: error.message || '播放失败', icon: 'none' })
       })
     }
   }

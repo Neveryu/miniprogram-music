@@ -25,8 +25,7 @@ Component({
     hasSearched: false,
     sources: [
       { value: 'netease', label: '网易云' },
-      { value: 'tencent', label: 'QQ音乐' },
-      { value: 'kugou', label: '酷狗' }
+      { value: 'tencent', label: 'QQ音乐' }
     ],
     source: 'netease',
     room_id: 0,
@@ -274,6 +273,37 @@ Component({
         wx.showToast({ title: error.message || (playNow ? '播放失败' : '点歌失败'), icon: 'none' })
       })
     },
+    // QQ 歌曲点播：先向服务端要一份带签名的播放地址，再入队/播放
+    addQQSong(song, playNow) {
+      wx.showLoading({ title: playNow ? '播放中' : '点歌中', mask: true })
+      jusicWsApi.pickQQSong(song).then(pickedSong => {
+        app.request({
+          url: playNow ? 'song/playSong' : 'song/addSong',
+          data: {
+            mid: pickedSong.mid,
+            source: pickedSong.source,
+            song: pickedSong,
+            room_id: app.globalData.roomInfo.room_id
+          },
+          success: () => {
+            wx.hideLoading()
+            wx.showToast({ title: playNow ? '播放成功' : '点歌成功' })
+          },
+          error: response => {
+            wx.hideLoading()
+            wx.showToast({ title: response.msg || (playNow ? '播放失败' : '点歌失败'), icon: 'none' })
+            return true
+          },
+          fail: error => {
+            wx.hideLoading()
+            wx.showToast({ title: error.message || (playNow ? '播放失败' : '点歌失败'), icon: 'none' })
+          }
+        })
+      }).catch(error => {
+        wx.hideLoading()
+        wx.showToast({ title: error.message || (playNow ? '播放失败' : '点歌失败'), icon: 'none' })
+      })
+    },
     showMenu(e) {
       let song = e.mark.item
       const isRadio = song.source === 'wydt'
@@ -288,6 +318,10 @@ Component({
             case '点歌':
               if (song.source === 'wydt') {
                 this.addRadioProgram(song, false)
+                break
+              }
+              if (song.source === 'tencent') {
+                this.addQQSong(song, false)
                 break
               }
               app.request({
@@ -327,6 +361,10 @@ Component({
             case '播放':
               if (song.source === 'wydt') {
                 this.addRadioProgram(song, true)
+                break
+              }
+              if (song.source === 'tencent') {
+                this.addQQSong(song, true)
                 break
               }
               app.request({

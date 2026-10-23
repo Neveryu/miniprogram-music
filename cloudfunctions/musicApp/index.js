@@ -140,6 +140,10 @@ const isUsableAudioUrl = value => {
   }
 }
 
+// QQ 播放地址由 jusic-serve 点播时下发，是带签名的直链；Meting 接口地址不算可用直链
+const isDirectAudioUrl = value => isUsableAudioUrl(value)
+  && !/^https:\/\/(?:meting\.mikus\.ink|api\.i-meto\.com)\//i.test(normalizeHttpsUrl(value))
+
 const resolveMusicUrlFromApiUrl = (apiUrl, timeout = 5000) => new Promise((resolve, reject) => {
   const request = https.get(apiUrl, (response) => {
     const location = response.headers.location || ''
@@ -256,6 +260,11 @@ const firstSuccess = (tasks) => new Promise((resolve, reject) => {
 const resolveMusicUrl = async (source, mid, apiUrl) => {
   const server = normalizeMusicSource(source)
   if (server === 'tencent') {
+    // 点播时服务端下发的 QQ 直链可直接使用，避免多一次探测占用云函数时间；
+    // 直链缺失才回退到 Meting 详情解析，已过期的直链由播放器错误回调触发自动切歌。
+    if (isDirectAudioUrl(apiUrl)) {
+      return normalizeHttpsUrl(apiUrl)
+    }
     return resolveTencentMusicUrl(mid)
   }
   const fallbackBaseUrl = getFallbackMusicApiUrl(server)
@@ -341,7 +350,11 @@ const validateSong = (song) => {
     throw new Error('歌曲数据不完整')
   }
   const source = normalizeMusicSource(song.source)
-  const url = source === 'tencent' ? '' : String(song.url || '')
+  const rawUrl = String(song.url || '')
+  // QQ 保留点播下发的签名直链，供入队后直接播放；缺失时仍按 songmid 兜底解析
+  const url = source === 'tencent'
+    ? (isDirectAudioUrl(rawUrl) ? normalizeHttpsUrl(rawUrl) : '')
+    : rawUrl
   if (source === 'wydt' && !url) {
     throw new Error('电台节目缺少播放地址')
   }

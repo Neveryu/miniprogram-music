@@ -7,8 +7,8 @@
  *   3. STOMP 就绪帧：CONNECTED；业务请求从此时开始发送
  *   4. SockJS 业务帧：a["TYPE\\n...\\n\\n{json}"]
  *
- * QQ 歌单歌曲沿用 QQ 搜索歌曲的元数据结构（songmid、歌名、歌手、专辑、封面、时长），
- * 不持久化限时播放地址；播放时由 musicApp 云函数按 songmid 调用 Meting 详情接口获取地址。
+ * QQ 歌曲搜索只返回元数据（songmid、歌名、歌手、专辑、封面、时长），播放地址需要向
+ * /music/pick 发起点播后由服务端在 PICK 帧中返回；该地址带签名，点歌/播放时随歌曲一起入队。
  */
 
 const WS_BASE = 'wss://xin.hanxin.vip/server'
@@ -346,7 +346,7 @@ function handleFrames(raw, task) {
       continue
     }
     if (currentPick && type === 'PICK') {
-      const pickedSong = findPickedRadioProgram(body, currentPick.program)
+      const pickedSong = findPickedSong(body, currentPick.program, currentPick.source)
       if (pickedSong) settlePick(pickedSong)
     }
     for (const handler of broadcastHandlers) {
@@ -711,7 +711,8 @@ function mapSong(item, source = 'netease') {
   }
 }
 
-function findPickedRadioProgram(body, program) {
+/** 从 PICK 广播里找出与本次点播匹配、且带播放地址的那首。 */
+function findPickedSong(body, program, source = 'wydt') {
   const data = body && body.data != null ? body.data : body
   const items = Array.isArray(data)
     ? data
@@ -720,21 +721,22 @@ function findPickedRadioProgram(body, program) {
       : data && Array.isArray(data.songs)
         ? data.songs
         : [data]
-  const expectedId = String(program.id || program.mid || '')
+  const expectedId = String(program.mid || program.id || '')
+  const mapSource = source === 'qq' ? 'tencent' : source
   for (const item of items) {
     const raw = item && (item.song || item.music || item)
     if (!raw) continue
-    const id = String(raw.id || raw.mid || '')
+    const id = String(raw.id || raw.mid || raw.songmid || '')
     const url = httpsUrl(raw.url || raw.musicUrl || raw.playUrl || '')
     if (!id || id !== expectedId || !url) continue
-    const mapped = mapSong({ ...program, ...raw, id }, 'wydt')
+    const mapped = mapSong({ ...program, ...raw, id }, mapSource)
     if (!mapped) continue
     return {
       ...mapped,
       pic: mapped.pic || program.pic || program.cover || '',
       cover: mapped.cover || program.cover || program.pic || '',
       url,
-      lrc: []
+      lrc: mapped.lrc || []
     }
   }
   return null
@@ -765,13 +767,46 @@ function pickRadioProgram(program) {
       return
     }
     const timer = setTimeout(() => settlePick(null, new Error('点播超时，请重试')), REQUEST_TIMEOUT)
-    currentPick = { resolve, reject, timer, program }
+    currentPick = { resolve, reject, timer, program, source: 'wydt' }
     const payload = {
       id: program.id,
       name: program.name,
       artist: program.artists || program.artist || '',
       duration: program.duration || 0,
       source: 'wydt',
+      sendTime: Date.now()
+    }
+    const frame = 'SEND\ndestination:/music/pick\n\n' + JSON.stringify(payload) + '\u0000'
+    socketTask.send({
+      data: JSON.stringify([frame]),
+      fail: error => settlePick(null, new Error('发送失败：' + (error.errMsg || '')))
+    })
+  }))
+}
+
+/**
+ * QQ 歌曲不返回播放地址，点播时需要先向服务端发起 /music/pick，
+ * 由服务端解析后在 PICK 帧里回传带签名的 url。
+ */
+function pickQQSong(song) {
+  return ensureConnected().then(() => new Promise((resolve, reject) => {
+    const id = String(song.mid || song.id || '')
+    if (!id) {
+      reject(new Error('歌曲标识无效'))
+      return
+    }
+    if (currentPick) {
+      reject(new Error('上一次点播尚未完成，请稍候'))
+      return
+    }
+    const timer = setTimeout(() => settlePick(null, new Error('获取播放地址超时，请重试')), REQUEST_TIMEOUT)
+    currentPick = { resolve, reject, timer, program: song, source: 'qq' }
+    const payload = {
+      id,
+      name: song.name,
+      artist: song.singer || song.artist || '',
+      duration: song.duration || 0,
+      source: 'qq',
       sendTime: Date.now()
     }
     const frame = 'SEND\ndestination:/music/pick\n\n' + JSON.stringify(payload) + '\u0000'
@@ -1040,6 +1075,7 @@ module.exports = {
   searchQQSongs,
   searchRadioPrograms,
   pickRadioProgram,
+  pickQQSong,
   onBroadcast,
   getQQUserPlaylists,
   getQQPlaylistSongs,
