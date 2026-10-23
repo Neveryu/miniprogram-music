@@ -101,7 +101,7 @@ page {
   position: absolute;
   top: 3px;
   left: 3px;
-  width: calc((100% - 6px) / 3);
+  width: calc((100% - 6px) / 2);
   height: 34px;
   border-radius: 20px;
   background: var(--accent-grad);
@@ -111,7 +111,6 @@ page {
 
 .source-seg-thumb.pos-0 { transform: translateX(0); }
 .source-seg-thumb.pos-1 { transform: translateX(100%); }
-.source-seg-thumb.pos-2 { transform: translateX(200%); }
 
 /* 搜索输入框 */
 .search-bar-wrap {

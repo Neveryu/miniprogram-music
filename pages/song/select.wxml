@@ -10,7 +10,7 @@
         <view class="source-seg-dot {{source==item.value?'show':''}}"></view>
         {{item.label}}
       </view>
-      <view class="source-seg-thumb {{source=='netease'?'pos-0':source=='tencent'?'pos-1':'pos-2'}}"></view>
+      <view class="source-seg-thumb {{source=='tencent'?'pos-1':'pos-0'}}"></view>
     </view>
 
     <!-- 搜索输入 -->
