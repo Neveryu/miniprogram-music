@@ -34,6 +34,19 @@ Component({
         title: '歌曲收藏'
       })
       this.getSongList()
+      // 游客点歌收藏触发登录后，返回本页时自动重拉列表
+      this.offLogin = app.onLogin(() => {
+        this.data.isLoading = false
+        this.data.page = 1
+        this.data.hasMore = true
+        this.setData({ songList: [] })
+        this.getSongList()
+      })
+    },
+    onUnload() {
+      if (this.offLogin) {
+        this.offLogin()
+      }
     },
     onPullDownRefresh() {
       this.data.page = 1
@@ -122,6 +135,10 @@ Component({
         data: {
           page: this.data.page,
           filter: this.data.filter
+        },
+        // 游客收到 401 时解除加载锁，取消登录后仍可下拉刷新重试
+        loginRequired: () => {
+          this.data.isLoading = false
         },
         success: (res) => {
           let songList = this.data.songList

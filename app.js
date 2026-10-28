@@ -1,6 +1,7 @@
 const { request } = require('./utils/request.js')
 const cloudConfig = require('./config/cloud.js')
 import { checkMiniprogramVersion } from './utils/core.js'
+const USER_INFO_KEY = 'music_user_info'
 App({
   globalData: {
     systemVersion: 0,
@@ -11,8 +12,8 @@ App({
     atUserInfo: false,
   },
   systemInfo: null,
-  avatarPromptVisible: false,
   cloudFileUrlCache: {},
+  loginListeners: [],
   request,
   resolveCloudFileUrls(fileIds) {
     const sources = [...new Set((fileIds || []).filter((fileId) => /^cloud:\/\//i.test(fileId)))]
@@ -44,6 +45,7 @@ App({
   },
   onLaunch() {
     checkMiniprogramVersion()
+    this.globalData.userInfo = this.readStoredUserInfo()
     this.systemInfo = wx.getSystemInfoSync()
     if (!wx.cloud) {
       wx.showModal({
@@ -59,32 +61,50 @@ App({
     })
     this.globalData.cloudReady = true
   },
-  watchUser(callback) {
-    let obj = this.globalData
-    Object.defineProperty(obj, 'user_changed', {
-      set: function (value) {
-        if (value && callback) {
-          callback()
-        }
+  readStoredUserInfo() {
+    try {
+      const userInfo = wx.getStorageSync(USER_INFO_KEY)
+      return userInfo && userInfo.user_id ? userInfo : null
+    } catch (error) {
+      console.error('[UserInfoCache]', error)
+      return null
+    }
+  },
+  saveUserInfo(userInfo) {
+    this.globalData.userInfo = userInfo || null
+    try {
+      if (userInfo) {
+        wx.setStorageSync(USER_INFO_KEY, userInfo)
+      } else {
+        wx.removeStorageSync(USER_INFO_KEY)
+      }
+    } catch (error) {
+      console.error('[UserInfoCache]', error)
+    }
+  },
+  // 注册登录成功回调，返回取消注册函数；登录后需要重拉数据的页面各自订阅
+  onLogin(callback) {
+    if (typeof callback !== 'function') {
+      return () => {}
+    }
+    this.loginListeners.push(callback)
+    return () => {
+      const index = this.loginListeners.indexOf(callback)
+      if (index > -1) {
+        this.loginListeners.splice(index, 1)
+      }
+    }
+  },
+  notifyLogin(userInfo) {
+    this.saveUserInfo(userInfo)
+    this.globalData.user_changed = true
+    this.loginListeners.slice().forEach((callback) => {
+      try {
+        callback(this.globalData.userInfo)
+      } catch (error) {
+        console.error('[LoginListener]', error)
       }
     })
-  },
-  alertChangeInfo() {
-    if (this.globalData.userInfo && !this.globalData.userInfo.user_head && !this.avatarPromptVisible) {
-      this.avatarPromptVisible = true
-      wx.showModal({
-        confirmText: '设置头像',
-        title: '需要微信头像',
-        content: '请授权选择微信头像后继续使用。',
-        showCancel: false,
-        complete: () => {
-          this.avatarPromptVisible = false
-          wx.navigateTo({
-            url: '/pages/user/motify'
-          })
-        }
-      })
-    }
   },
   showLogin: function () {
     wx.navigateTo({

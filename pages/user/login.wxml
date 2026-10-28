@@ -37,17 +37,22 @@
       <view class="button-wrap">
         <button
           class="login-button {{agreementChecked ? 'is-ready' : ''}}"
-          open-type="chooseAvatar"
+          open-type="{{privacyReady ? 'chooseAvatar' : 'agreePrivacyAuthorization'}}"
           bindchooseavatar="chooseWechatAvatar"
+          bindagreeprivacyauthorization="handleAgreePrivacy"
           loading="{{isLoggingIn}}"
           disabled="{{isLoggingIn}}"
         >
           <text class="btn-note">♪</text>
-          <text>{{isLoggingIn ? '正在检票入场...' : '使用微信头像登录'}}</text>
+          <text>{{isLoggingIn ? '正在检票入场...' : privacyReady ? '使用微信头像登录' : '同意隐私保护指引后继续'}}</text>
         </button>
         <view class="lock-shield" wx:if="{{!agreementChecked}}" catchtap="onDisabledLoginTap"></view>
       </view>
       <view class="login-hint" wx:if="{{!agreementChecked}}">勾选同意协议后，即可点亮登录按钮</view>
+      <view class="privacy-hint" wx:if="{{agreementChecked && !privacyReady}}">
+        登录前需同意微信{{privacyContractName}}
+        <text class="privacy-link" bindtap="openPrivacyContract">查看</text>
+      </view>
       <view class="consent-row {{consentShake ? 'is-shaking' : ''}}">
         <view class="consent-check {{agreementChecked ? 'checked' : ''}} {{consentShake ? 'is-alerting' : ''}}" bindtap="toggleAgreement">
           <text wx:if="{{agreementChecked}}">✓</text>

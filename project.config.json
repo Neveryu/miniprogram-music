@@ -74,7 +74,7 @@
   },
   "compileType": "miniprogram",
   "cloudfunctionRoot": "cloudfunctions/",
-  "libVersion": "2.19.2",
+  "libVersion": "2.32.3",
   "appid": "wx652ce078b8271b28",
   "projectname": "Music For U",
   "isGameTourist": false,

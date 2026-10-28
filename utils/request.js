@@ -58,6 +58,10 @@ const request = (data = {}) => {
         }
         break
       case config.code.login:
+        // 先让页面复位自身的 loading 状态，再交给登录处理
+        if (data.loginRequired) {
+          data.loginRequired(response)
+        }
         if (data.login) {
           data.login(response)
         } else {

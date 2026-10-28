@@ -49,7 +49,8 @@ Page({
     voiceSource: '',
     voicePlayRequestId: 0,
     voiceFileCache: {},
-    userInfo: null,
+    userInfo: app.globalData.userInfo || null,
+    authReady: !!app.globalData.userInfo,
     roomInfo: null,
     songInfo: null,
     playerPicError: false,
@@ -70,7 +71,7 @@ Page({
   onLoad(options) {
     // 初始化emoji列表
     this.data.emojiList = config.emojiList
-    app.watchUser(() => {
+    this.offLogin = app.onLogin(() => {
       this.getMyInfo()
     })
     // 响应歌词变化
@@ -285,26 +286,27 @@ Page({
     app.request({
       url: api.getMyInfo,
       success: (res) => {
+        app.saveUserInfo(res.data)
         this.setData({
-          userInfo: res.data
+          userInfo: res.data,
+          authReady: true
         })
-        app.globalData.userInfo = res.data
         app.globalData.user_changed = false
         wx.hideNavigationBarLoading()
         if (reloadRoom) {
           this.getRoomInfo()
         }
-        app.alertChangeInfo()
       },
       login: () => {
         wx.hideNavigationBarLoading()
-        app.globalData.userInfo = null
-        this.setData({ userInfo: null })
+        app.saveUserInfo(null)
+        this.setData({ userInfo: null, authReady: true })
         // 游客也加载房间信息，可浏览消息与正在播放的歌曲
         this.getRoomInfo()
       },
       error(res) {
         wx.hideNavigationBarLoading()
+        this.setData({ authReady: true })
       }
     })
   },
@@ -927,16 +929,6 @@ Page({
           url: '../song/my?bbbug=' + app.globalData.systemVersion
         })
         break
-      case '资料':
-        wx.navigateTo({
-          url: '../user/motify',
-          events: {
-            myInfoChanged: () => {
-              this.getMyInfo(false)
-            }
-          }
-        })
-        break
       case '提示词':
         wx.navigateTo({
           url: '../room/prompts'
@@ -1511,6 +1503,9 @@ Page({
     })
   },
   onUnload() {
+    if (this.offLogin) {
+      this.offLogin()
+    }
     this.closeCloudWatchers()
     if (this.data.isRecording && this.data.recorderManager) {
       this.data.discardVoiceResult = true

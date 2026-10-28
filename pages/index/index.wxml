@@ -99,7 +99,7 @@
   <view class="bbbug_scroll_button" wx:if="{{!isScrollEnabled && !isEmojiBoxShow && !isPanelShow}}"
     bindtap="enableScroll">新消息</view>
   
-  <view class="bbbug_cover" wx:if="{{!userInfo || userInfo.user_id<0}}" bindtap="login">点击登录后加入互动吧</view>
+  <view class="bbbug_cover" wx:if="{{authReady && (!userInfo || userInfo.user_id<0)}}" bindtap="login">点击登录后加入互动吧</view>
 
   <!-- 播放器(顶部固定长条) -->
   <view class="bbbug_player {{roomInfo.children_mode ? 'children-player' : ''}}" bindtap="showSongMenu" bindlongpress="setSimplePlayer" wx:if="{{!simplePlayer}}">

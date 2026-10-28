@@ -12,6 +12,8 @@ const MUSIC_API_URL = 'https://api.i-meto.com/meting/api'
 const NETEASE_MUSIC_API_URL = 'https://meting.mikus.ink/api'
 const MUSIC_SOURCES = ['netease', 'tencent', 'kugou', 'wydt']
 const DEFAULT_SEARCH_PROMPTS = ['周杰伦', '流行歌曲', '经典歌曲', '精选']
+// 允许登录的协议版本；登录必须携带当前版本，缺失或不匹配一律拒绝
+const AGREEMENT_VERSIONS = ['V1.2']
 // 自动补歌来源权重（收藏 / 缓存 / 提示词），候选按权重随机混入队列
 const REFILL_SOURCE_WEIGHTS = { favorite: 5, cache: 3, prompt: 2 }
 // 儿歌模式补歌权重：儿歌收藏（用户精选）占主导，云端儿歌词池补充新鲜度
@@ -382,6 +384,9 @@ const withTimeout = (promise, timeout) => Promise.race([
 
 const getOpenid = () => cloud.getWXContext().OPENID
 
+// 登录头像由客户端上传到 avatars/ 单层目录
+const isLoginAvatarFile = (value) => /^cloud:\/\/[^/]+\/avatars\/[^/]+$/i.test(String(value || ''))
+
 const createSystemUserName = (openid) => {
   const suffix = crypto.createHash('sha256').update(String(openid)).digest('hex').slice(0, 8).toUpperCase()
   return `音乐用户${suffix}`
@@ -408,8 +413,16 @@ const getUserByOpenid = async (openid) => {
 
 const saveLoginUser = async (openid, payload) => {
   const userHead = String(payload.user_head || '')
-  if (!/^cloud:\/\//i.test(userHead)) {
+  if (!isLoginAvatarFile(userHead)) {
     return failure('请授权选择并上传微信头像', 422)
+  }
+  const agreementVersion = String(payload.agreement_version || '').trim()
+  if (AGREEMENT_VERSIONS.indexOf(agreementVersion) === -1) {
+    return failure('请先阅读并同意隐私保护指引', 422)
+  }
+  const agreementFields = {
+    agreement_version: agreementVersion,
+    agreed_at: db.serverDate()
   }
   const systemUserName = createSystemUserName(openid)
   const existing = await getUserByOpenid(openid)
@@ -417,6 +430,8 @@ const saveLoginUser = async (openid, payload) => {
     const values = {
       user_name: systemUserName,
       user_head: userHead,
+      profile_completed: true,
+      ...agreementFields,
       updated_at: db.serverDate()
     }
     await db.collection('users').doc(existing._id).update({ data: values })
@@ -427,16 +442,27 @@ const saveLoginUser = async (openid, payload) => {
     user_head: userHead,
     user_sex: 2,
     user_remark: '',
-    profile_completed: false,
+    profile_completed: true,
+    ...agreementFields,
     updated_at: db.serverDate()
   }
-  const created = await db.collection('users').add({
-    data: {
-      _openid: openid,
-      ...values,
-      created_at: db.serverDate(),
+  let created
+  try {
+    created = await db.collection('users').add({
+      data: {
+        _openid: openid,
+        ...values,
+        created_at: db.serverDate(),
+      }
+    })
+  } catch (error) {
+    // 并发首次登录可能同时写入，唯一索引冲突时复用已存在的用户
+    const duplicated = await getUserByOpenid(openid)
+    if (!duplicated) {
+      throw error
     }
-  })
+    return success(toClientUser(duplicated), '登录成功')
+  }
   return success(toClientUser({
     _id: created._id,
     _openid: openid,
@@ -630,21 +656,6 @@ const recallMessage = async (payload, user) => {
   }
   await db.collection('messages').doc(payload.message_id).remove()
   return success(null, '撤回成功')
-}
-
-const updateProfile = async (payload, user) => {
-  if (!payload.user_head && !user.user_head) {
-    return failure('请先授权选择微信头像', 422)
-  }
-  const values = {
-    user_head: payload.user_head || user.user_head,
-    user_sex: Number(payload.user_sex) || 0,
-    user_remark: String(payload.user_remark || '').trim().slice(0, 100),
-    profile_completed: Boolean(payload.user_head || user.user_head),
-    updated_at: db.serverDate()
-  }
-  await db.collection('users').doc(user._id).update({ data: values })
-  return success(toClientUser({ ...user, ...values }), '资料已更新')
 }
 
 const addFavorite = async (payload, user) => {
@@ -1252,7 +1263,6 @@ const updateSearchPrompts = async (payload, user) => {
 
 const handlers = {
   'user/getmyinfo': async (payload, user) => success(toClientUser(user)),
-  'user/updateMyInfo': updateProfile,
   'room/getRoomInfo': async (payload, user) => success(await getDefaultRoom(user)),
   'room/getSearchPrompts': async (payload, user) => success(normalizeSearchPrompts((await getDefaultRoom(user)).search_prompts)),
   'room/updateSearchPrompts': updateSearchPrompts,
@@ -1357,6 +1367,9 @@ exports.main = async (event) => {
       return refillQueue({ count: 3 }, ownerResult.data)
     }
     const openid = getOpenid()
+    if (!openid) {
+      return failure('请先完成微信登录', 401)
+    }
     if (event.action === 'weapp/wxAppLogin') {
       return await saveLoginUser(openid, event.payload || {})
     }
