@@ -1,7 +1,6 @@
 import config from '../../config/index.js'
 import api from '../../config/api.js'
 const app = getApp()
-var WechatSI = requirePlugin('WechatSI')
 Page({
   data: {
     // 值应为某子元素id（id不能以数字开头）。设置哪个方向可滚动，则在哪个方向滚动到该元素
@@ -34,7 +33,6 @@ Page({
     messageWatcher: null,
     roomWatcher: null,
     bgPlayer: null,
-    audioPlayer: null,
     voicePlayer: null,
     recorderManager: null,
     voiceMode: false,
@@ -195,11 +193,11 @@ Page({
           },
           loading: '收藏中',
           success: (res) => {
-            this.say(res.msg)
+            
             this.refillPlaybackQueue()
           },
           error: (res) => {
-            this.say(res.msg)
+            
             return true
           }
         })
@@ -219,11 +217,11 @@ Page({
             room_id: app.globalData.roomInfo.room_id
           },
           success: (res) => {
-            this.say(res.msg)
+            
             this.refillPlaybackQueue()
           },
           error: (res) => {
-            this.say(res.msg)
+            
             return true
           }
         })
@@ -238,7 +236,7 @@ Page({
           queue_id: this.data.songInfo._id
         },
         success: (res) => {
-          this.say(res.msg)
+          
           this.refillPlaybackQueue()
         },
         error() {
@@ -247,10 +245,6 @@ Page({
       })
     })
     
-    // 创建内部 audio 上下文 InnerAudioContext 对象
-    this.data.audioPlayer = wx.createInnerAudioContext({
-      useWebAudioImplement: true
-    })
     if (wx.setInnerAudioOption) {
       wx.setInnerAudioOption({
         mixWithOther: true,
@@ -457,7 +451,7 @@ Page({
           } else {
             msgString = decodeURIComponent(msg.user.user_name) + '说：' + decodeURIComponent(msg.content)
           }
-          this.say(msgString)
+          
           for (let i = 0; i < this.data.messageList.length; i++) {
             if (this.data.messageList[i].loading) {
               this.data.messageList.splice(i, 1)
@@ -471,27 +465,27 @@ Page({
           msgString = decodeURIComponent(msg.user.user_name) + ' 送了一首《' + msg.song.name + '》给 ' +
             decodeURIComponent(msg.at.user_name)
           this.addSystemMessage(msgString)
-          this.say(msgString)
+          
         } else {
           msgString = decodeURIComponent(msg.user.user_name) + ' 点了一首《' + msg.song.name + '》'
           this.addSystemMessage(msgString)
-          this.say(msgString)
+          
         }
         break
       case 'pass':
         msgString = decodeURIComponent(msg.user.user_name) + ' 切掉了《' + msg.song.name + '》'
         this.addSystemMessage(msgString, '#ff4500')
-        this.say(msgString)
+        
         break
       case 'push':
         msgString = decodeURIComponent(msg.user.user_name) + ' 将歌曲 《' + msg.song.name + '》 设为置顶候播放'
         this.addSystemMessage(msgString)
-        this.say(msgString)
+        
         break
       case 'removeSong':
         msgString = decodeURIComponent(msg.user.user_name) + ' 将歌曲 《' + msg.song.name + '》 从队列移除'
         this.addSystemMessage(msgString)
-        this.say(msgString)
+        
         break
       case 'back':
         for (let i = 0; i < this.data.messageList.length; i++) {
@@ -505,7 +499,7 @@ Page({
         });
         msgString = decodeURIComponent(msg.user.user_name) + ' 撤回了一条消息'
         this.addSystemMessage(msgString)
-        this.say(msgString)
+        
         break
       case 'playSong':
         if (msg && msg.song && msg.user) {
@@ -767,21 +761,6 @@ Page({
     })
     this.setData({
       bbbug_view_scroll: view_id
-    })
-  },
-  say(str) {
-    if (!this.data.isCarMode) {
-      return
-    }
-    WechatSI.textToSpeech({
-      lang: 'zh_CN',
-      tts: true,
-      content: str,
-      success: (res) => {
-        this.data.audioPlayer.src = res.filename
-        this.data.audioPlayer.playbackRate = 1.2
-        this.data.audioPlayer.play()
-      }
     })
   },
   // 获取当前房间的消息
@@ -1220,7 +1199,7 @@ Page({
   },
   tapToAddSong() {
     if (!this.data.songInfo || !this.data.songInfo.song) {
-      this.say('当前没有正在播放的歌曲')
+      wx.showToast({ title: '当前没有正在播放的歌曲', icon: 'none' })
       return
     }
     app.request({
@@ -1233,10 +1212,10 @@ Page({
       },
       loading: '收藏中',
       success: (res) => {
-        this.say(res.msg)
+        
       },
       error: (res) => {
-        this.say(res.msg)
+        
         return true
       }
     })
@@ -1249,10 +1228,10 @@ Page({
           room_id: app.globalData.roomInfo.room_id
         },
         success: (res) => {
-          this.say(res.msg)
+          
         },
         error: (res) => {
-          this.say(res.msg)
+          
           return true
         }
       })
@@ -1267,7 +1246,7 @@ Page({
         queue_id: this.data.songInfo._id
       },
       success: (res) => {
-        this.say(res.msg)
+        
         this.refillPlaybackQueue()
       },
       error: () => {

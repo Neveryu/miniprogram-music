@@ -36,6 +36,7 @@ Page({
   },
   handleAgreePrivacy() {
     this.setData({ privacyReady: true })
+    wx.showToast({ title: '隐私授权已完成，请点击选择头像', icon: 'none' })
   },
   openPrivacyContract() {
     if (typeof wx.openPrivacyContract !== 'function') {
@@ -57,11 +58,22 @@ Page({
       this.setData({ consentShake: false })
     }, 900)
   },
-  onDisabledLoginTap() {
-    if (!this.data.agreementChecked) {
-      this.shakeConsent()
-      wx.vibrateShort({ type: 'light' })
+  onLoginButtonTap() {
+    if (this.data.agreementChecked || this.consentModalVisible) {
+      return
     }
+    this.shakeConsent()
+    wx.vibrateShort({ type: 'light' })
+    this.consentModalVisible = true
+    wx.showModal({
+      title: '请先同意协议',
+      content: '请阅读并勾选《用户服务协议》和《隐私政策》，再使用微信头像登录。',
+      showCancel: false,
+      confirmText: '知道了',
+      complete: () => {
+        this.consentModalVisible = false
+      }
+    })
   },
   toggleAgreement() {
     this.setData({
@@ -83,7 +95,8 @@ Page({
       wx.showToast({ title: '请选择微信头像后继续', icon: 'none' })
       return
     }
-    this.setData({ isLoggingIn: true })
+    // 能拿到头像说明平台隐私授权已完成（含官方弹窗同意的情况）
+    this.setData({ isLoggingIn: true, privacyReady: true })
     wx.showLoading({ title: '登录中', mask: true })
     const extension = avatarUrl.match(/\.([a-zA-Z0-9]+)(?:\?|$)/)
     const cloudPath = `avatars/${Date.now()}-${Math.random().toString(16).slice(2)}.${extension ? extension[1] : 'jpg'}`

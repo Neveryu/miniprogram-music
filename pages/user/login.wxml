@@ -36,7 +36,16 @@
       <view class="ticket-desc">选择微信头像，加入实时点歌与互动</view>
       <view class="button-wrap">
         <button
-          class="login-button {{agreementChecked ? 'is-ready' : ''}}"
+          wx:if="{{!agreementChecked}}"
+          class="login-button"
+          bindtap="onLoginButtonTap"
+        >
+          <text class="btn-note">♪</text>
+          <text>使用微信头像登录</text>
+        </button>
+        <button
+          wx:else
+          class="login-button is-ready"
           open-type="{{privacyReady ? 'chooseAvatar' : 'agreePrivacyAuthorization'}}"
           bindchooseavatar="chooseWechatAvatar"
           bindagreeprivacyauthorization="handleAgreePrivacy"
@@ -46,9 +55,8 @@
           <text class="btn-note">♪</text>
           <text>{{isLoggingIn ? '正在检票入场...' : privacyReady ? '使用微信头像登录' : '同意隐私保护指引后继续'}}</text>
         </button>
-        <view class="lock-shield" wx:if="{{!agreementChecked}}" catchtap="onDisabledLoginTap"></view>
       </view>
-      <view class="login-hint" wx:if="{{!agreementChecked}}">勾选同意协议后，即可点亮登录按钮</view>
+      <view class="login-hint" wx:if="{{!agreementChecked}}">勾选同意协议后，即可使用微信头像登录</view>
       <view class="privacy-hint" wx:if="{{agreementChecked && !privacyReady}}">
         登录前需同意微信{{privacyContractName}}
         <text class="privacy-link" bindtap="openPrivacyContract">查看</text>

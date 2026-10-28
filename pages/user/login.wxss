@@ -291,16 +291,6 @@ page {
   margin-top: 36rpx;
 }
 
-.lock-shield {
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  z-index: 3;
-  border-radius: 14rpx;
-}
-
 .btn-note {
   margin-right: 14rpx;
   font-size: 28rpx;
