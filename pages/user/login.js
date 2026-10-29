@@ -19,7 +19,7 @@ Page({
     })
     this.loadPrivacySetting()
   },
-  // 查询微信侧隐私授权状态，未授权时登录按钮改为原生同意按钮
+  // 查询微信侧隐私授权状态，仅用于提示；授权由 chooseAvatar 触发官方弹窗完成
   loadPrivacySetting() {
     if (typeof wx.getPrivacySetting !== 'function') {
       return
@@ -33,10 +33,6 @@ Page({
       },
       fail: () => {}
     })
-  },
-  handleAgreePrivacy() {
-    this.setData({ privacyReady: true })
-    wx.showToast({ title: '隐私授权已完成，请点击选择头像', icon: 'none' })
   },
   openPrivacyContract() {
     if (typeof wx.openPrivacyContract !== 'function') {

@@ -1,84 +1,81 @@
-<view class="vinyl-page">
-  <view class="paper-grain"></view>
+<view class="login-page">
+  <!-- 背景：柔和的暖色块与彩色圆点 -->
+  <view class="bg-blob bg-blob-peach"></view>
+  <view class="bg-blob bg-blob-mint"></view>
+  <view class="bg-dot dot-a"></view>
+  <view class="bg-dot dot-b"></view>
+  <view class="bg-dot dot-c"></view>
 
-  <view class="masthead reveal r1">
-    <text class="mast-text">MUSIC FOR U · VOL.886</text>
-    <view class="mast-rule"></view>
-    <text class="mast-text">EST. 2026</text>
-  </view>
-
-  <view class="hero">
-    <view class="deck reveal r2">
-      <view class="record-shadow"></view>
-      <view class="record">
-        <view class="record-label"></view>
-        <view class="record-spindle"></view>
-      </view>
-      <view class="tonearm">
-        <view class="arm-base"></view>
-        <view class="arm-stick"></view>
-        <view class="arm-head"></view>
-      </view>
+  <view class="login-content">
+    <!-- 品牌标记 -->
+    <view class="brand-mark">
+      <text class="brand-dot"></text>
+      <text>Music For U</text>
     </view>
-    <view class="hero-title reveal r2">Music For U</view>
-    <view class="hero-sub reveal r2">在音乐里，遇见同频的你</view>
-  </view>
 
-  <view class="ticket reveal r3">
-    <view class="ticket-head">
-      <text class="ticket-label">ADMIT ONE · 入场券</text>
-      <text class="ticket-free">FREE</text>
-      <view class="ticket-notch notch-l"></view>
-      <view class="ticket-notch notch-r"></view>
-    </view>
-    <view class="ticket-body">
-      <view class="ticket-title">进入你的音乐房间</view>
-      <view class="ticket-desc">选择微信头像，加入实时点歌与互动</view>
-      <view class="button-wrap">
-        <button
-          wx:if="{{!agreementChecked}}"
-          class="login-button"
-          bindtap="onLoginButtonTap"
-        >
-          <text class="btn-note">♪</text>
-          <text>使用微信头像登录</text>
-        </button>
-        <button
-          wx:else
-          class="login-button is-ready"
-          open-type="{{privacyReady ? 'chooseAvatar' : 'agreePrivacyAuthorization'}}"
-          bindchooseavatar="chooseWechatAvatar"
-          bindagreeprivacyauthorization="handleAgreePrivacy"
-          loading="{{isLoggingIn}}"
-          disabled="{{isLoggingIn}}"
-        >
-          <text class="btn-note">♪</text>
-          <text>{{isLoggingIn ? '正在检票入场...' : privacyReady ? '使用微信头像登录' : '同意隐私保护指引后继续'}}</text>
-        </button>
-      </view>
-      <view class="login-hint" wx:if="{{!agreementChecked}}">勾选同意协议后，即可使用微信头像登录</view>
-      <view class="privacy-hint" wx:if="{{agreementChecked && !privacyReady}}">
-        登录前需同意微信{{privacyContractName}}
-        <text class="privacy-link" bindtap="openPrivacyContract">查看</text>
-      </view>
-      <view class="consent-row {{consentShake ? 'is-shaking' : ''}}">
-        <view class="consent-check {{agreementChecked ? 'checked' : ''}} {{consentShake ? 'is-alerting' : ''}}" bindtap="toggleAgreement">
-          <text wx:if="{{agreementChecked}}">✓</text>
-          <text wx:elif="{{consentShake}}" class="check-alert">!</text>
-        </view>
-        <view class="consent-flag" wx:if="{{consentShake}}">先勾选同意，才能检票入场</view>
-        <view class="consent-copy" bindtap="toggleAgreement">
-          <text>我已阅读并同意</text>
-          <text class="consent-link {{serviceRead ? 'read' : ''}}" catchtap="readAgreement" data-type="service">《用户服务协议》</text>
-          <text>和</text>
-          <text class="consent-link {{privacyRead ? 'read' : ''}}" catchtap="readAgreement" data-type="privacy">《隐私政策》</text>
+    <!-- 风筝：轻盈、童趣，呼应“快乐出发” -->
+    <view class="kite-scene">
+      <view class="cloud cloud-left"></view>
+      <view class="cloud cloud-right"></view>
+      <view class="kite">
+        <view class="kite-face">
+          <view class="kite-eye kite-eye-left"></view>
+          <view class="kite-eye kite-eye-right"></view>
+          <view class="kite-smile"></view>
         </view>
       </view>
+      <view class="kite-tail">
+        <view class="tail-bow bow-one"></view>
+        <view class="tail-bow bow-two"></view>
+        <view class="tail-bow bow-three"></view>
+      </view>
     </view>
-  </view>
 
-  <view class="page-foot reveal r4">
-    <view class="foot-rule"></view>
-    <text class="foot-text">头像仅用于音乐房间内展示 · 登录操作由你本人确认</text>
+    <view class="login-title">准备好快乐出发了吗？</view>
+    <view class="login-sub">随时随地、和孩子一起、快乐出发、有你也有TA~</view>
+
+    <view class="button-wrap">
+      <button
+        wx:if="{{!agreementChecked}}"
+        class="login-button is-locked"
+        hover-class="none"
+        bindtap="onLoginButtonTap"
+      >
+        <text>一键登录</text>
+      </button>
+      <button
+        wx:else
+        class="login-button is-ready"
+        hover-class="none"
+        open-type="chooseAvatar"
+        bindchooseavatar="chooseWechatAvatar"
+        loading="{{isLoggingIn}}"
+        disabled="{{isLoggingIn}}"
+      >
+        <text>{{isLoggingIn ? '正在进入...' : '一键登录'}}</text>
+      </button>
+    </view>
+
+    <view class="login-hint" wx:if="{{!agreementChecked}}">先勾选下面的小方框，就能进去啦</view>
+    <view class="privacy-hint" wx:if="{{agreementChecked && !privacyReady}}">
+      首次登录会弹出微信{{privacyContractName}}，同意后继续选择头像
+      <text class="privacy-link" bindtap="openPrivacyContract">查看</text>
+    </view>
+
+    <view class="consent-row {{consentShake ? 'is-shaking' : ''}}">
+      <view class="consent-check {{agreementChecked ? 'checked' : ''}} {{consentShake ? 'is-alerting' : ''}}" bindtap="toggleAgreement">
+        <text wx:if="{{agreementChecked}}">✓</text>
+        <text wx:elif="{{consentShake}}" class="check-alert">!</text>
+      </view>
+      <view class="consent-copy" bindtap="toggleAgreement">
+        <text>我已阅读并同意</text>
+        <text class="consent-link {{serviceRead ? 'read' : ''}}" catchtap="readAgreement" data-type="service">《用户服务协议》</text>
+        <text>和</text>
+        <text class="consent-link {{privacyRead ? 'read' : ''}}" catchtap="readAgreement" data-type="privacy">《隐私政策》</text>
+      </view>
+    </view>
+    <view class="consent-error" wx:if="{{consentShake}}">先勾选同意，才能进去哦</view>
+
+    <view class="page-foot">头像只会在房间里显示 · 登录由你本人确认</view>
   </view>
 </view>

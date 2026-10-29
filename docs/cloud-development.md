@@ -77,7 +77,7 @@ cloudfunctions/musicApp
 → 用户不存在时显示登录入口
 → 用户勾选协议同意（未勾选时点击登录触发抖动提示）
 → 可查看《用户服务协议》和《隐私政策》独立页面
-→ 查询微信侧隐私授权状态；未授权时通过原生 agreePrivacyAuthorization 按钮同意《小程序用户隐私保护指引》
+→ 查询微信侧隐私授权状态；未授权时点击登录由 chooseAvatar 自动弹出官方隐私指引，同意后继续选择头像
 → 用户点击微信一键登录并在官方选择器确认头像
 → 头像上传云存储并携带协议版本调用 weapp/wxAppLogin 创建用户
 → 云函数校验协议版本并记录 agreement_version / agreed_at
@@ -86,7 +86,7 @@ cloudfunctions/musicApp
 
 首页每次启动都会静默调用 `user/getmyinfo`。本地缓存只用于首屏展示，云函数仍通过可信 OPENID 查询业务用户，因此已有用户即使清除本地缓存也能直接加载资料；查询不会自动创建用户。只有数据库中不存在该用户时才显示登录入口。
 
-登录前必须显式勾选协议同意；协议与隐私政策以独立页面（`pages/user/agreement?type=service|privacy`）完整展示，不使用弹窗。登录页还会通过 `wx.getPrivacySetting` 查询微信侧隐私授权状态，未授权时按钮切换为原生 `open-type="agreePrivacyAuthorization"`，用户同意后平台记录该状态；`wx.openPrivacyContract` 可打开后台配置的《小程序用户隐私保护指引》。
+登录前必须显式勾选协议同意；协议与隐私政策以独立页面（`pages/user/agreement?type=service|privacy`）完整展示，不使用弹窗。登录页还会通过 `wx.getPrivacySetting` 查询微信侧隐私授权状态，仅用于提示；未授权时点击按钮由 `chooseAvatar` 自动触发微信官方隐私指引弹窗，用户同意后继续选择头像，不需要再点第二次。`wx.openPrivacyContract` 可打开后台配置的《小程序用户隐私保护指引》。
 
 登录必须携带 `agreement_version`，缺失或不在允许列表时云函数直接拒绝；通过后把版本和 `agreed_at` 写入用户文档，便于协议升级时追溯。微信头像必须由新用户通过 `chooseAvatar` 主动确认，后端不能根据 OPENID 静默获取；昵称由系统生成，登录后不提供资料编辑入口。本地缓存只用于首屏展示，不构成业务鉴权凭据；项目不提供与微信身份冲突的业务退出登录。
 

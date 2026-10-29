@@ -2,9 +2,9 @@
   "usingComponents": {},
   "navigationStyle": "default",
   "navigationBarTitleText": "登录",
-  "navigationBarBackgroundColor": "#f2ead8",
+  "navigationBarBackgroundColor": "#fffbf6",
   "navigationBarTextStyle": "black",
-  "backgroundColor": "#f2ead8",
+  "backgroundColor": "#fffbf6",
   "backgroundTextStyle": "light",
   "enablePullDownRefresh": false,
   "disableScroll": true
