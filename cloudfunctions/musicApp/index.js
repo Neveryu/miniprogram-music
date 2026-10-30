@@ -8,8 +8,10 @@ const db = cloud.database()
 const _ = db.command
 const DEFAULT_ROOM_ID = 1
 const DEFAULT_ROOM_NAME = 'Music For U'
-const MUSIC_API_URL = 'https://api.i-meto.com/meting/api'
-const NETEASE_MUSIC_API_URL = 'https://meting.mikus.ink/api'
+// 网易云官方歌词与歌曲详情接口；播放地址统一由客户端通过 jusic-serve WebSocket 点播获取
+const NETEASE_LYRIC_URL = 'https://music.163.com/api/song/lyric'
+const NETEASE_SONG_DETAIL_URL = 'https://music.163.com/api/song/detail'
+// 保留历史数据中的来源标识；当前只有 netease 与 tencent 具备可用的在线播放链路
 const MUSIC_SOURCES = ['netease', 'tencent', 'kugou', 'wydt']
 const DEFAULT_SEARCH_PROMPTS = ['周杰伦', '流行歌曲', '经典歌曲', '精选']
 // 允许登录的协议版本；登录必须携带当前版本，缺失或不匹配一律拒绝
@@ -18,47 +20,13 @@ const AGREEMENT_VERSIONS = ['V1.2']
 const REFILL_SOURCE_WEIGHTS = { favorite: 5, cache: 3, prompt: 2 }
 // 儿歌模式补歌权重：儿歌收藏（用户精选）占主导，云端儿歌词池补充新鲜度
 const CHILDREN_REFILL_WEIGHTS = { favorite: 3, children: 2 }
-// 一键儿歌：云端儿歌关键词池（与前端儿歌乐园曲库同源），儿歌模式下自动补歌从中随机抽词搜索
-const CHILDREN_SONG_KEYWORDS = [
-  // 经典儿歌
-  '小星星 儿歌', '两只老虎 儿歌', '小燕子 儿歌', '拔萝卜 儿歌', '找朋友 儿歌', '数鸭子 儿歌',
-  '丢手绢 儿歌', '世上只有妈妈好 儿歌', '小白船 儿歌', '卖报歌 儿歌', '一分钱 儿歌',
-  '上学歌 儿歌', '读书郎 儿歌', '娃哈哈 儿歌', '我的好妈妈 儿歌', '劳动最光荣',
-  // 摇篮曲
-  '勃拉姆斯 摇篮曲', '舒伯特 摇篮曲', '月儿明 风儿静 摇篮曲', '宝贝宝贝 贝瓦儿歌',
-  '虫儿飞 儿歌', '摇啊摇 摇到外婆桥',
-  // 动物朋友
-  '小兔子乖乖 儿歌', '蜗牛与黄鹂鸟 儿歌', '小毛驴 儿歌', '小螺号 儿歌', '捉泥鳅 儿歌',
-  '小乌鸦爱妈妈', '一只哈巴狗 儿歌', '大象 儿歌',
-  // 国学启蒙
-  '三字经 儿歌', '弟子规 儿歌', '咏鹅 谷建芬', '静夜思 谷建芬', '春晓 谷建芬',
-  '悯农 谷建芬', '游子吟 谷建芬',
-  // 英文儿歌
-  'Twinkle Twinkle Little Star 儿歌', 'Old MacDonald Had a Farm', 'ABC Song 儿歌',
-  'Bingo song 儿歌', 'The Wheels On The Bus 儿歌', 'Jingle Bells 儿歌', 'Five Little Ducks',
-  'Baby Shark', 'Finger Family', 'Five Little Monkeys', 'Rain Rain Go Away', 'Baa Baa Black Sheep',
-  // 律动儿歌
-  '健康歌 范晓萱', '幸福拍手歌 儿歌', '爱我你就抱抱我', '小手拍拍 儿歌',
-  // 动画经典
-  '黑猫警长 主题曲', '葫芦娃 儿歌', '舒克和贝塔 主题曲', '大风车 主题曲', '蓝精灵之歌',
-  '白龙马 儿歌', '大头儿子和小头爸爸 主题曲', '聪明的一休 主题曲',
-  // 节日日常
-  '新年好 儿歌', '恭喜恭喜 儿歌', '刷牙歌 儿歌', '爷爷为我打月饼'
-]
-// 儿歌模式：聚合类关键词，搜索返回整批儿歌合集，是儿歌多样性的主力来源
-const CHILDREN_AGGREGATE_KEYWORDS = [
-  '儿歌', '儿歌多多', '贝乐虎儿歌', '宝宝巴士儿歌', '贝瓦儿歌', '亲宝儿歌', '火火兔儿歌',
-  '经典儿歌大全', '睡前儿歌', '早教儿歌', '英文儿歌', '中文儿歌', '热门儿歌', '新儿歌'
-]
-// 游客（未登录）可访问的只读接口：浏览房间、消息、队列、搜索、歌词与播放地址
+// 游客（未登录）可访问的只读接口：浏览房间、消息、队列、歌词
 const GUEST_ACTIONS = [
   'room/getRoomInfo',
   'app/getRealtimeState',
   'message/getMessageList',
   'song/songList',
-  'song/search',
-  'song/getLrc',
-  'song/getUrl'
+  'song/getLrc'
 ]
 const AUTO_SONG_USER = {
   user_id: 'system',
@@ -74,60 +42,11 @@ const success = (data, msg = '操作成功') => ({ code: 200, msg, data })
 const failure = (msg, code = 500, data = null) => ({ code, msg, data })
 
 const normalizeMusicSource = (source) => MUSIC_SOURCES.includes(source) ? source : 'netease'
-const getMusicApiUrl = (source) => normalizeMusicSource(source) === 'netease' ? NETEASE_MUSIC_API_URL : MUSIC_API_URL
-const getFallbackMusicApiUrl = () => ''
 
-const createMusicError = (message, statusCode = 0) => {
-  const error = new Error(message)
-  error.statusCode = statusCode
-  return error
-}
-
-const buildMusicApiUrl = (baseUrl, params) => {
-  const query = Object.keys(params)
-    .map((key) => `${encodeURIComponent(key)}=${encodeURIComponent(params[key])}`)
-    .join('&')
-  return query ? `${baseUrl}?${query}` : baseUrl
-}
-
-const requestMusicApiAt = (baseUrl, params, parser = JSON.parse, timeout = 5000) => new Promise((resolve, reject) => {
-  const requestUrl = buildMusicApiUrl(baseUrl, params)
-  const request = https.get(requestUrl, (response) => {
-    let body = ''
-    response.setEncoding('utf8')
-    response.on('data', (chunk) => {
-      body += chunk
-    })
-    response.on('end', () => {
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        reject(createMusicError(`音乐接口返回 HTTP ${response.statusCode}`, response.statusCode))
-        return
-      }
-      try {
-        resolve(parser(body))
-      } catch (error) {
-        reject(createMusicError('音乐接口返回格式无效'))
-      }
-    })
-  })
-  request.setTimeout(timeout, () => request.destroy(createMusicError('音乐接口请求超时')))
-  request.on('error', reject)
-})
-
-const requestMusicApi = async (params, parser = JSON.parse, timeout = 5000) => {
-  const source = normalizeMusicSource(params.server)
-  try {
-    return await requestMusicApiAt(getMusicApiUrl(source), { ...params, server: source }, parser, timeout)
-  } catch (error) {
-    const fallbackUrl = getFallbackMusicApiUrl(source)
-    if (!fallbackUrl) {
-      throw error
-    }
-    return requestMusicApiAt(fallbackUrl, { ...params, server: source }, parser, timeout)
-  }
-}
-
-const normalizeHttpsUrl = value => String(value || '').replace(/^http:\/\//i, 'https://')
+const normalizeHttpsUrl = value => String(value || '')
+  .replace(/^http:\/\//i, 'https://')
+  .replace(/\\u0026/gi, '&')
+  .replace(/&amp;/gi, '&')
 
 const isUsableAudioUrl = value => {
   try {
@@ -142,194 +61,130 @@ const isUsableAudioUrl = value => {
   }
 }
 
-// QQ 播放地址由 jusic-serve 点播时下发，是带签名的直链；Meting 接口地址不算可用直链
+// 历史歌曲里可能存有已失效的 Meting 接口地址，统一按「没有直链」处理
 const isDirectAudioUrl = value => isUsableAudioUrl(value)
-  && !/^https:\/\/(?:meting\.mikus\.ink|api\.i-meto\.com)\//i.test(normalizeHttpsUrl(value))
+  && !/\/meting\/api(?:\?|$)/i.test(normalizeHttpsUrl(value))
+  && !/[?&]type=url(?:&|$)/i.test(normalizeHttpsUrl(value))
 
-const resolveMusicUrlFromApiUrl = (apiUrl, timeout = 5000) => new Promise((resolve, reject) => {
-  const request = https.get(apiUrl, (response) => {
-    const location = response.headers.location || ''
-    if (response.statusCode >= 300 && response.statusCode < 400 && isUsableAudioUrl(location)) {
+// 网易云官方歌词接口，短时缓存避免重复请求
+const LYRIC_CACHE_TTL = 30 * 60 * 1000
+const lyricCache = new Map()
+
+// 网易云官方接口请求：歌词和封面补全都复用同一套请求头
+const NETEASE_REQUEST_HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36',
+  Referer: 'https://music.163.com/',
+  Accept: 'application/json',
+  'Accept-Encoding': 'identity'
+}
+
+const requestNeteaseJson = (requestUrl, timeout = 2500) => new Promise((resolve, reject) => {
+  const request = https.get(requestUrl, { headers: NETEASE_REQUEST_HEADERS }, (response) => {
+    if (response.statusCode < 200 || response.statusCode >= 300) {
       response.resume()
-      resolve(normalizeHttpsUrl(location))
-      return
-    }
-    if (response.statusCode >= 200 && response.statusCode < 300
-      && /^audio\//i.test(response.headers['content-type'] || '')) {
-      response.resume()
-      resolve(normalizeHttpsUrl(apiUrl))
+      reject(new Error(`网易云接口返回 HTTP ${response.statusCode}`))
       return
     }
     let body = ''
     response.setEncoding('utf8')
     response.on('data', (chunk) => {
-      if (body.length < 4096) body += chunk
+      body += chunk
     })
     response.on('end', () => {
-      const statusCode = response.statusCode || 0
-      const value = body.trim()
-      let parsedValue = value
       try {
-        const parsed = JSON.parse(value)
-        if (typeof parsed === 'string') {
-          parsedValue = parsed.trim()
-        }
+        resolve(JSON.parse(body))
       } catch (error) {
-        parsedValue = value
+        reject(new Error('网易云接口返回格式无效'))
       }
-      if (statusCode >= 200 && statusCode < 300) {
-        if (isUsableAudioUrl(parsedValue)) {
-          resolve(normalizeHttpsUrl(parsedValue))
-          return
-        }
-        if (/^audio\//i.test(response.headers['content-type'] || '')) {
-          resolve(normalizeHttpsUrl(apiUrl))
-          return
-        }
-      }
-      const unavailable = statusCode === 401 || statusCode === 403 || statusCode === 404
-        || (statusCode >= 300 && statusCode < 400)
-        || /\/404(?:\/|\?|$)/i.test(location)
-      reject(createMusicError(unavailable ? '歌曲播放资源不可用' : `音乐接口返回 HTTP ${statusCode}`, unavailable ? 404 : statusCode))
     })
   })
-  request.setTimeout(timeout, () => request.destroy(createMusicError('音乐播放接口请求超时')))
+  request.setTimeout(timeout, () => request.destroy(new Error('网易云接口请求超时')))
   request.on('error', reject)
 })
 
-const resolveTencentMusicUrl = async (mid) => {
-  const item = await getMusicDetailItemFrom(NETEASE_MUSIC_API_URL, 'tencent', mid)
-  const url = item && typeof item.url === 'string' ? item.url : ''
-  if (!url || extractMusicId(url) !== String(mid)) {
-    throw createMusicError('QQ音乐播放资源不可用', 404)
+const requestNeteaseLyric = (mid) => requestNeteaseJson(
+  `${NETEASE_LYRIC_URL}?id=${encodeURIComponent(mid)}&lv=1&kv=1&tv=-1`,
+  2000
+).then(parsed => parsed && parsed.lrc && typeof parsed.lrc.lyric === 'string' ? parsed.lrc.lyric : '')
+
+const getNeteaseLyric = async (mid) => {
+  const key = String(mid || '')
+  if (!key) {
+    return []
   }
-  return resolveMusicUrlFromApiUrl(url)
+  const cached = lyricCache.get(key)
+  if (cached && Date.now() - cached.ts < LYRIC_CACHE_TTL) {
+    return cached.lines
+  }
+  const text = await requestNeteaseLyric(key)
+  const lines = parseLyrics(text)
+  lyricCache.set(key, { lines, ts: Date.now() })
+  return lines
 }
 
-// 详情接口（type=song）免鉴权且返回带签名的 url/lrc 地址，做短时缓存避免重复请求
-const MUSIC_DETAIL_CACHE_TTL = 3 * 60 * 1000
-const musicDetailCache = new Map()
+// 网易云搜索经常不返回封面，用官方歌曲详情接口补全；命中结果缓存 24 小时
+const COVER_CACHE_TTL = 24 * 60 * 60 * 1000
+const COVER_MISS_TTL = 10 * 60 * 1000
+const coverCache = new Map()
 
-const getMusicDetailItemFrom = async (baseUrl, source, mid, timeout = 5000) => {
-  const detail = await requestMusicApiAt(baseUrl, {
-    server: normalizeMusicSource(source),
-    type: 'song',
-    id: mid
-  }, JSON.parse, timeout)
-  return Array.isArray(detail) ? detail.find((entry) => entry && (entry.url || entry.lrc)) : null
-}
-
-const getMusicDetailItem = async (source, mid, timeout = 5000) => {
-  const key = `${normalizeMusicSource(source)}:${mid}`
-  const cached = musicDetailCache.get(key)
-  if (cached && Date.now() - cached.ts < MUSIC_DETAIL_CACHE_TTL) {
-    return cached.item
+const normalizeCoverMids = (mids) => {
+  if (!Array.isArray(mids)) {
+    return []
   }
-  let item
-  let usedFallback = false
-  try {
-    item = await getMusicDetailItemFrom(getMusicApiUrl(source), source, mid, timeout)
-  } catch (error) {
-    const fallbackUrl = getFallbackMusicApiUrl(source)
-    if (!fallbackUrl) throw error
-    usedFallback = true
-    item = await getMusicDetailItemFrom(fallbackUrl, source, mid, timeout)
-  }
-  if (!item) {
-    const fallbackUrl = getFallbackMusicApiUrl(source)
-    if (fallbackUrl && !usedFallback) item = await getMusicDetailItemFrom(fallbackUrl, source, mid, timeout)
-  }
-  if (item) {
-    musicDetailCache.set(key, { item, ts: Date.now() })
-  }
-  return item
-}
-
-const firstSuccess = (tasks) => new Promise((resolve, reject) => {
-  let pending = tasks.length
-  let lastError = null
-  tasks.forEach((task) => {
-    Promise.resolve(task).then(resolve, (error) => {
-      lastError = error
-      pending -= 1
-      if (pending === 0) {
-        reject(lastError || new Error('所有请求均失败'))
-      }
-    })
+  const list = []
+  mids.forEach((value) => {
+    const mid = String(value || '').trim()
+    if (/^\d+$/.test(mid) && !list.includes(mid)) {
+      list.push(mid)
+    }
   })
-})
+  return list.slice(0, 30)
+}
 
-const resolveMusicUrl = async (source, mid, apiUrl) => {
-  const server = normalizeMusicSource(source)
-  if (server === 'tencent') {
-    // 点播时服务端下发的 QQ 直链可直接使用，避免多一次探测占用云函数时间；
-    // 直链缺失才回退到 Meting 详情解析，已过期的直链由播放器错误回调触发自动切歌。
-    if (isDirectAudioUrl(apiUrl)) {
-      return normalizeHttpsUrl(apiUrl)
-    }
-    return resolveTencentMusicUrl(mid)
-  }
-  const fallbackBaseUrl = getFallbackMusicApiUrl(server)
-  const fallbackUrl = fallbackBaseUrl
-    ? buildMusicApiUrl(fallbackBaseUrl, { server, type: 'url', id: mid })
-    : ''
-  const isMetingUrl = value => value && typeof value === 'string'
-    && /^https:\/\/meting\.mikus\.ink\/api\?/.test(value)
-
-  if (isMetingUrl(apiUrl)) {
-    try {
-      return await resolveMusicUrlFromApiUrl(apiUrl)
-    } catch (error) {
-      if (![401, 403, 404, 500].includes(error.statusCode)) throw error
-      if (fallbackUrl) {
-        try { return await resolveMusicUrlFromApiUrl(fallbackUrl) } catch (fallbackError) { /* 继续使用详情地址 */ }
+const getNeteaseCovers = async (mids) => {
+  const result = {}
+  const need = []
+  const now = Date.now()
+  mids.forEach((mid) => {
+    const cached = coverCache.get(mid)
+    if (cached) {
+      const fresh = now - cached.ts < (cached.pic ? COVER_CACHE_TTL : COVER_MISS_TTL)
+      if (fresh) {
+        if (cached.pic) {
+          result[mid] = cached.pic
+        }
+        return
       }
     }
+    need.push(mid)
+  })
+  if (!need.length) {
+    return result
   }
-
-  const item = await getMusicDetailItem(server, mid)
-  const detailUrl = item && typeof item.url === 'string' ? item.url : ''
-  if (!detailUrl || extractMusicId(detailUrl) !== String(mid)) {
-    throw createMusicError('歌曲播放资源不可用', 404)
-  }
-
-  try {
-    return await resolveMusicUrlFromApiUrl(detailUrl)
-  } catch (error) {
-    if (![401, 403, 404, 500].includes(error.statusCode) || !fallbackUrl) throw error
-    return resolveMusicUrlFromApiUrl(fallbackUrl)
-  }
-}
-
-const extractMusicId = (value) => {
-  const match = String(value || '').match(/[?&]id=([^&]+)/i)
-  return match ? decodeURIComponent(match[1]) : ''
-}
-
-const normalizeMusicItem = (item, source = 'netease') => {
-  const mid = extractMusicId(item.url)
-    || extractMusicId(item.lrc)
-    || String(item.songmid || item.songMid || item.mid || item.id || '')
-  if (!mid || !item.title) {
-    return null
-  }
-  const server = normalizeMusicSource(source)
-  const isTencent = server === 'tencent'
-  const musicApiUrl = getMusicApiUrl(server)
-  const fallbackUrl = `${musicApiUrl}?server=${server}&type=url&id=${encodeURIComponent(mid)}`
-  const fallbackLrc = `${musicApiUrl}?server=${server}&type=lrc&id=${encodeURIComponent(mid)}`
-  return {
-    ...(isTencent ? { songmid: mid } : {}),
-    source: server,
-    mid,
-    name: String(item.title),
-    singer: String(item.author || ''),
-    album: '',
-    pic: String(item.pic || '').replace(/^http:\/\//i, 'https://'),
-    // QQ 播放地址由 song/getUrl 按 songmid 调用 Meting 详情接口动态获取，不持久化限时地址。
-    url: isTencent ? '' : String(item.url || fallbackUrl).replace(/^http:\/\//i, 'https://'),
-    lrc: isTencent ? '' : String(item.lrc || fallbackLrc).replace(/^http:\/\//i, 'https://')
-  }
+  const ids = JSON.stringify(need)
+  const parsed = await requestNeteaseJson(`${NETEASE_SONG_DETAIL_URL}?ids=${encodeURIComponent(ids)}`)
+  const songs = Array.isArray(parsed && parsed.songs) ? parsed.songs : []
+  const found = new Set()
+  songs.forEach((item) => {
+    const mid = String(item && item.id || '')
+    if (!need.includes(mid)) {
+      return
+    }
+    found.add(mid)
+    const pic = normalizeHttpsUrl(item.album && (item.album.picUrl || item.album.blurPicUrl) || '')
+    if (/^https:\/\//i.test(pic)) {
+      coverCache.set(mid, { pic, ts: Date.now() })
+      result[mid] = pic
+    } else {
+      coverCache.set(mid, { pic: '', ts: Date.now() })
+    }
+  })
+  need.forEach((mid) => {
+    if (!found.has(mid)) {
+      coverCache.set(mid, { pic: '', ts: Date.now() })
+    }
+  })
+  return result
 }
 
 const parseLyrics = (source) => String(source || '')
@@ -352,16 +207,10 @@ const validateSong = (song) => {
     throw new Error('歌曲数据不完整')
   }
   const source = normalizeMusicSource(song.source)
-  const rawUrl = String(song.url || '')
-  // QQ 保留点播下发的签名直链，供入队后直接播放；缺失时仍按 songmid 兜底解析
-  const url = source === 'tencent'
-    ? (isDirectAudioUrl(rawUrl) ? normalizeHttpsUrl(rawUrl) : '')
-    : rawUrl
+  // 播放地址由客户端 WS 点播下发；历史旧接口地址一律视为没有直链
+  const url = isDirectAudioUrl(song.url) ? normalizeHttpsUrl(song.url) : ''
   if (source === 'wydt' && !url) {
     throw new Error('电台节目缺少播放地址')
-  }
-  if (url && !/^https:\/\//i.test(url) && !/^cloud:\/\//i.test(url)) {
-    throw new Error('歌曲播放地址必须使用 HTTPS 或云文件地址')
   }
   return {
     source,
@@ -371,16 +220,9 @@ const validateSong = (song) => {
     album: String(song.album || ''),
     pic: source === 'kugou' ? '' : String(song.pic || ''),
     url,
-    lrc: source === 'tencent' || source === 'wydt'
-      ? []
-      : (typeof song.lrc === 'string' ? song.lrc : (Array.isArray(song.lrc) ? song.lrc : []))
+    lrc: []
   }
 }
-
-const withTimeout = (promise, timeout) => Promise.race([
-  promise,
-  new Promise((resolve) => setTimeout(() => resolve([]), timeout))
-])
 
 const getOpenid = () => cloud.getWXContext().OPENID
 
@@ -776,11 +618,16 @@ const addSong = async (payload, user, playNow = false) => {
   return success(null, playNow || !room.current_song ? '播放成功' : '点歌成功')
 }
 
-// 移除当前播放歌曲并切到队列下一首
-const switchToNextSong = async (room) => {
+// 移除当前播放歌曲并切到队列下一首；autoPass 时先补一次歌再切，避免唯一歌曲失效后队列直接清空
+const switchToNextSong = async (room, options = {}) => {
   const currentId = room.current_song && room.current_song._id
-  const queue = await db.collection('play_queue').where({ room_id: DEFAULT_ROOM_ID }).orderBy('sort_time', 'asc').limit(2).get()
-  const next = queue.data.find((item) => !currentId || item._id !== currentId) || null
+  let queue = await db.collection('play_queue').where({ room_id: DEFAULT_ROOM_ID }).orderBy('sort_time', 'asc').limit(2).get()
+  let next = queue.data.find((item) => !currentId || item._id !== currentId) || null
+  if (!next && options.refillWhenEmpty && options.user) {
+    await refillQueue({ count: 2 }, options.user).catch(() => null)
+    queue = await db.collection('play_queue').where({ room_id: DEFAULT_ROOM_ID }).orderBy('sort_time', 'asc').limit(2).get()
+    next = queue.data.find((item) => !currentId || item._id !== currentId) || null
+  }
   const condition = currentId
     ? { room_id: DEFAULT_ROOM_ID, 'current_song._id': currentId }
     : { room_id: DEFAULT_ROOM_ID, current_song: null }
@@ -851,21 +698,6 @@ const getFavoriteSongs = async (user, childrenOnly) => {
   }).filter((song) => song && song.source !== 'wydt'))
 }
 
-const filterPlayableSongs = async (songs, existingKeys, limit) => {
-  const candidates = songs
-    .filter((song) => song && !existingKeys.has(`${song.source}:${song.mid}`))
-    .slice(0, Math.max(limit * 3, limit))
-  const checked = await Promise.all(candidates.map(async (song) => {
-    try {
-      await withTimeout(resolveMusicUrl(song.source, song.mid, song.url), 1200)
-      return song
-    } catch (error) {
-      return null
-    }
-  }))
-  return checked.filter(Boolean).slice(0, limit)
-}
-
 const addBackupSong = async (song, source, index) => {
   const autoUser = source === 'favorite' ? { ...AUTO_SONG_USER, user_name: '收藏歌曲' }
     : source === 'children' ? { ...AUTO_SONG_USER, user_name: '儿歌电台' }
@@ -881,6 +713,36 @@ const addBackupSong = async (song, source, index) => {
   }
   const created = await db.collection('play_queue').add({ data: queueItem })
   return { ...queueItem, _id: created._id }
+}
+
+// 客户端通过 WS 搜索后提交的补歌候选；服务端只做结构校验，不再请求音乐接口
+const normalizeClientCandidates = (candidates) => {
+  if (!Array.isArray(candidates)) {
+    return []
+  }
+  const list = []
+  const keys = new Set()
+  candidates.slice(0, 30).forEach((entry) => {
+    const source = entry && (entry.source === 'prompt' || entry.source === 'children') ? entry.source : ''
+    if (!source || !entry.song) {
+      return
+    }
+    try {
+      const song = validateSong(entry.song)
+      if (song.source !== 'netease') {
+        return
+      }
+      const key = `${song.source}:${song.mid}`
+      if (keys.has(key)) {
+        return
+      }
+      keys.add(key)
+      list.push({ source, song })
+    } catch (error) {
+      return
+    }
+  })
+  return list
 }
 
 const refillQueue = async (payload, user) => {
@@ -928,21 +790,30 @@ const refillQueue = async (payload, user) => {
     }
     const needed = target - currentQueue.length
     const added = []
-    // 儿歌模式：候选来自「儿歌收藏 + 云端儿歌词池」；正常模式：收藏 / 缓存 / 提示词三来源并行准备
-    const childrenKeywords = room.children_mode ? pickChildrenKeywords() : []
-    const [favoritePool, cachePool, promptPool, childrenPool] = await Promise.all([
+    // 客户端通过 WS 搜索提供提示词/儿歌词池候选；云端只负责结构校验和入队
+    const clientCandidates = normalizeClientCandidates(payload.candidates)
+    const clientPoolOf = (source) => shuffleSongs(
+      clientCandidates.filter((entry) => entry.source === source).map((entry) => entry.song)
+    ).filter((song) => !existingKeys.has(`${song.source}:${song.mid}`)).slice(0, Math.max(needed * 2, needed))
+    const [favoriteSongs, cacheSongs] = await Promise.all([
       // 收藏来源与收藏页分类互斥：正常模式取「我的歌曲」，儿歌模式取「儿歌」
-      getFavoriteSongs(user, !!room.children_mode).then((songs) => filterPlayableSongs(songs, existingKeys, needed)),
-      room.children_mode ? Promise.resolve([]) : filterPlayableSongs(shuffleSongs(room.backup_songs.map((song) => {
+      getFavoriteSongs(user, !!room.children_mode),
+      Promise.resolve(shuffleSongs((Array.isArray(room.backup_songs) ? room.backup_songs : []).map((song) => {
         try {
           return validateSong(song)
         } catch (error) {
           return null
         }
-      })), existingKeys, needed),
-      room.children_mode ? Promise.resolve([]) : findPromptSongs(room, existingKeys, needed).then((songs) => filterPlayableSongs(songs, existingKeys, needed)),
-      room.children_mode ? findChildrenSongs(childrenKeywords, existingKeys, needed).then((songs) => filterPlayableSongs(songs, existingKeys, needed)) : Promise.resolve([])
+      })))
     ])
+    const favoritePool = favoriteSongs
+      .filter((song) => !existingKeys.has(`${song.source}:${song.mid}`))
+      .slice(0, Math.max(needed * 2, needed))
+    const cachePool = room.children_mode ? [] : cacheSongs
+      .filter((song) => song && !existingKeys.has(`${song.source}:${song.mid}`))
+      .slice(0, Math.max(needed * 2, needed))
+    const promptPool = room.children_mode ? [] : clientPoolOf('prompt')
+    const childrenPool = room.children_mode ? clientPoolOf('children') : []
     // 提示词搜索成功时刷新房间缓存
     if (promptPool.length) {
       await db.collection('rooms').doc(room._id).update({
@@ -1051,7 +922,7 @@ const autoPassSong = async (payload, user) => {
   if (payload.source && normalizeMusicSource(payload.source) !== normalizeMusicSource(room.current_song.song.source)) {
     return failure('当前播放歌曲已发生变化', 409)
   }
-  const result = await switchToNextSong(room)
+  const result = await switchToNextSong(room, { refillWhenEmpty: true, user })
   if (!result.advanced) {
     return failure('当前播放歌曲已发生变化', 409)
   }
@@ -1105,27 +976,6 @@ const pushQueueSong = async (payload, user) => {
   return success(null, '置顶成功')
 }
 
-const searchMusic = async (payload) => {
-  const keyword = String(payload.keyword || '').trim()
-  if (!keyword || keyword.length > 50) {
-    return failure('请输入歌曲名称', 422)
-  }
-  try {
-    const source = normalizeMusicSource(payload.source)
-    const result = await requestMusicApi({
-      server: source,
-      type: 'search',
-      id: keyword
-    })
-    const songs = Array.isArray(result)
-      ? result.map((item) => normalizeMusicItem(item, source)).filter(Boolean)
-      : []
-    return success(songs, '搜索成功')
-  } catch (error) {
-    return failure(error.message || '音乐搜索失败', 502)
-  }
-}
-
 const normalizeSearchPrompts = (prompts) => {
   if (!Array.isArray(prompts)) {
     return DEFAULT_SEARCH_PROMPTS
@@ -1133,59 +983,7 @@ const normalizeSearchPrompts = (prompts) => {
   return [...new Set(prompts.map((item) => String(item || '').trim()).filter((item) => item.length > 0 && item.length <= 30))].slice(0, 20)
 }
 
-const findPromptSongs = async (room, existingKeys, limit) => {
-  const prompts = normalizeSearchPrompts(room.search_prompts)
-  if (!prompts.length || limit <= 0) {
-    return []
-  }
-  try {
-    const keyword = prompts[Math.floor(Math.random() * prompts.length)]
-    const source = 'netease'
-    const result = await requestMusicApi({
-      server: source,
-      type: 'search',
-      id: keyword
-    }, JSON.parse, 1500)
-    const songs = Array.isArray(result) ? result.map((item) => normalizeMusicItem(item, source)).filter(Boolean) : []
-    // 打乱搜索结果后再取样，避免固定取头部歌曲
-    return shuffleSongs(songs.filter((song) => !existingKeys.has(`${song.source}:${song.mid}`))).slice(0, Math.max(limit * 3, limit))
-  } catch (error) {
-    return []
-  }
-}
-
-// 儿歌模式：随机抽 1 个聚合词（搜出整批儿歌合集）+ 2 个具体歌名词，纯随机无记忆
-const pickAggregateKeyword = () => shuffleSongs(CHILDREN_AGGREGATE_KEYWORDS)[0]
-const pickChildrenKeywords = () => shuffleSongs([
-  pickAggregateKeyword(),
-  ...shuffleSongs(CHILDREN_SONG_KEYWORDS).slice(0, 2)
-])
-
-// 儿歌模式：按关键词搜索儿歌，返回随机排序的候选
-const searchChildrenKeyword = async (keyword, existingKeys, limit) => {
-  try {
-    const result = await requestMusicApi({
-      server: 'netease',
-      type: 'search',
-      id: keyword
-    }, JSON.parse, 1500)
-    const songs = Array.isArray(result) ? result.map((item) => normalizeMusicItem(item, 'netease')).filter(Boolean) : []
-    return shuffleSongs(songs.filter((song) => !existingKeys.has(`${song.source}:${song.mid}`))).slice(0, Math.max(limit, 1))
-  } catch (error) {
-    return []
-  }
-}
-
-// 儿歌模式：多词并行搜索汇总候选
-const findChildrenSongs = async (keywords, existingKeys, limit) => {
-  if (!keywords.length || limit <= 0) {
-    return []
-  }
-  const groups = await Promise.all(keywords.map((keyword) => searchChildrenKeyword(keyword, existingKeys, Math.max(limit, 2))))
-  return shuffleSongs(groups.flat())
-}
-
-// 一键儿歌：开启时清空待播队列并立即播放一首儿歌（优先取「儿歌」收藏），后续自动补歌走「儿歌收藏 + 云端词池」
+// 一键儿歌：开启时清空待播队列并优先播放一首「儿歌」收藏；没有收藏时由客户端通过 WS 搜索补充
 const setChildrenMode = async (payload, user) => {
   const room = await getDefaultRoom(user)
   if (!payload.enabled) {
@@ -1201,7 +999,7 @@ const setChildrenMode = async (payload, user) => {
     }
     return success({ children_mode: false }, '儿歌模式已关闭')
   }
-  // 先置位再清空队列：后续由前端 watch / 定时器触发的补歌自动走「儿歌收藏 + 云端词池」
+  // 先置位再清空队列：后续补歌自动走「儿歌收藏 + 客户端 WS 词池候选」
   await db.collection('rooms').doc(room._id).update({
     data: {
       children_mode: true,
@@ -1209,26 +1007,25 @@ const setChildrenMode = async (payload, user) => {
     }
   })
   await db.collection('play_queue').where({ room_id: DEFAULT_ROOM_ID }).remove()
-  // 立即播放一首儿歌：优先取用户「儿歌」收藏，没有可用的再随机抽聚合词搜索
-  // 两者都不做地址预验证，播放资源失效时前端会自动重解析
-  let song = (await getFavoriteSongs(user, true))[0]
-  let backupSource = 'favorite'
+  // 优先播放用户「儿歌」收藏；没有收藏时交给客户端用 WS 搜索补充首曲
+  const song = (await getFavoriteSongs(user, true))[0]
   if (!song) {
-    const keyword = pickAggregateKeyword()
-    const songs = keyword ? await searchChildrenKeyword(keyword, new Set(), 1) : []
-    song = songs[0]
-    backupSource = 'children'
-  }
-  if (!song) {
-    return success({ children_mode: true }, '儿歌模式已开启，正在准备儿歌')
+    await db.collection('rooms').where({ room_id: DEFAULT_ROOM_ID }).update({
+      data: {
+        current_song: _.set(null),
+        auto_refill_paused: false,
+        updated_at: db.serverDate()
+      }
+    })
+    return success({ children_mode: true, has_song: false }, '儿歌模式已开启，正在准备儿歌')
   }
   const queueItem = {
     room_id: DEFAULT_ROOM_ID,
     song,
-    user: { ...AUTO_SONG_USER, user_name: backupSource === 'favorite' ? '收藏歌曲' : '儿歌电台' },
+    user: { ...AUTO_SONG_USER, user_name: '收藏歌曲' },
     sort_time: Date.now(),
     auto_added: true,
-    backup_source: backupSource,
+    backup_source: 'favorite',
     created_at: db.serverDate()
   }
   const created = await db.collection('play_queue').add({ data: queueItem })
@@ -1240,7 +1037,7 @@ const setChildrenMode = async (payload, user) => {
       updated_at: db.serverDate()
     }
   })
-  return success({ children_mode: true }, '儿歌模式已开启')
+  return success({ children_mode: true, has_song: true }, '儿歌模式已开启')
 }
 
 const updateSearchPrompts = async (payload, user) => {
@@ -1279,7 +1076,6 @@ const handlers = {
     await db.collection('messages').where({ room_id: DEFAULT_ROOM_ID }).remove()
     return success(null, '消息已清空')
   },
-  'song/search': searchMusic,
   'song/songList': queueList,
   'song/addSong': addSong,
   'song/playSong': (payload, user) => addSong(payload, user, true),
@@ -1293,60 +1089,29 @@ const handlers = {
   'song/autoPass': autoPassSong,
   'song/ended': finishSong,
   'song/refill': refillQueue,
-  'song/getUrl': async (payload) => {
-    if (!payload.mid) {
-      return failure('缺少歌曲标识', 422)
-    }
-    try {
-      return success(await resolveMusicUrl(payload.source, payload.mid, payload.url))
-    } catch (error) {
-      return failure(error.message || '歌曲播放资源不可用', 502)
-    }
-  },
   'song/getLrc': async (payload) => {
     if (!payload.mid) {
       return success([])
     }
-    // QQ WS 歌曲结果只提供 metadata 和 songmid；不再通过 Meting 拼接或补取 QQ 歌词地址。
-    if (normalizeMusicSource(payload.source) === 'tencent') {
+    // 只有网易云提供官方歌词；QQ 与电台歌曲返回空歌词
+    if (normalizeMusicSource(payload.source) !== 'netease') {
       return success([])
-    }
-    const server = normalizeMusicSource(payload.source)
-    const parseLyricsBody = (body) => parseLyrics(body)
-    // 并行发起：已存歌词地址 + 详情签名地址 + 网易云备用接口
-    const tasks = []
-    if (payload.lrc && typeof payload.lrc === 'string' && /^https:\/\/(?:api\.i-meto\.com\/meting|meting\.mikus\.ink)\/api\?/.test(payload.lrc)) {
-      tasks.push(requestMusicApiAt(payload.lrc, {}, parseLyricsBody))
-    }
-    tasks.push((async () => {
-      const item = await getMusicDetailItem(server, payload.mid)
-      if (!item || !item.lrc) {
-        throw new Error('歌词资源不可用')
-      }
-      try {
-        return await requestMusicApiAt(item.lrc, {}, parseLyricsBody)
-      } catch (error) {
-        const fallbackUrl = getFallbackMusicApiUrl(server)
-        if (!fallbackUrl) throw error
-        return requestMusicApiAt(buildMusicApiUrl(fallbackUrl, {
-          server,
-          type: 'lrc',
-          id: payload.mid
-        }), {}, parseLyricsBody)
-      }
-    })())
-    const fallbackUrl = getFallbackMusicApiUrl(server)
-    if (fallbackUrl) {
-      tasks.push(requestMusicApiAt(buildMusicApiUrl(fallbackUrl, {
-        server,
-        type: 'lrc',
-        id: payload.mid
-      }), {}, parseLyricsBody))
     }
     try {
-      return success(await withTimeout(firstSuccess(tasks), 2200))
+      return success(await getNeteaseLyric(payload.mid))
     } catch (error) {
       return success([])
+    }
+  },
+  'song/getCovers': async (payload) => {
+    const mids = normalizeCoverMids(payload.mids)
+    if (!mids.length) {
+      return success({})
+    }
+    try {
+      return success(await getNeteaseCovers(mids))
+    } catch (error) {
+      return success({})
     }
   },
   'attach/search': async () => success([])

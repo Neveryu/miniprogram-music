@@ -111,8 +111,9 @@
       <view class="bbbug_player_singer">{{lrcString}}</view>
       <view class="bbbug_player_user">点歌人 {{helper.urldecode(songInfo.user.user_name)}}</view>
     </view>
-    <view wx:if="{{!songInfo}}">
-      <view class="bbbug_player_tips">播放器加载中</view>
+    <view wx:if="{{!songInfo}}" class="bbbug_player_empty">
+      <view class="bbbug_player_tips">{{roomInfo ? '还没有待播放的歌曲' : '播放器加载中'}}</view>
+      <view wx:if="{{roomInfo}}" class="bbbug_player_empty-action" catchtap="goSelectSong">去点歌</view>
     </view>
     <!-- 儿歌模式：上下跑马灯 -->
     <block wx:if="{{roomInfo.children_mode}}">

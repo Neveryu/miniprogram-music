@@ -1,5 +1,6 @@
 const app = getApp();
 const jusicWsApi = require('../../utils/jusicWsApi.js')
+const { fillSongCovers } = require('../../utils/cover.js')
 Component({
   /**
    * 组件的属性列表
@@ -151,6 +152,12 @@ Component({
             songList: songList
           })
           this.data.isLoading = false
+          const filter = this.data.filter
+          fillSongCovers(songList).then((songs) => {
+            if (this.data.filter === filter) {
+              this.setData({ songList: songs.slice() })
+            }
+          })
         },
         error: () => {
           if (this.data.page > 1) {
@@ -160,12 +167,9 @@ Component({
         }
       })
     },
-    // QQ 收藏的播放地址可能缺失或过期，点歌/播放前重新取一次点播直链
+    // 播放地址可能缺失或过期，点歌/播放前统一通过 WS 点播重新取直链
     resolvePickedSong(song) {
-      if (!song || song.source !== 'tencent') {
-        return Promise.resolve(song)
-      }
-      return jusicWsApi.pickQQSong(song)
+      return jusicWsApi.ensurePlayableSong(song, true)
     },
     showMenu(e) {
       let song = e.mark.item

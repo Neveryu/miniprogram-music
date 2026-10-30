@@ -1,5 +1,6 @@
 const app = getApp()
 const jusicWsApi = require('../../utils/jusicWsApi.js')
+const { fillSongCovers } = require('../../utils/cover.js')
 Component({
   /**
    * 组件的属性列表
@@ -160,8 +161,8 @@ Component({
         userList: []
       })
 
-      // 歌单和 QQ 歌曲搜索走统一的 SockJS + STOMP WebSocket；网易云普通歌曲搜索继续走云函数。
-      const isNeteaseWsSearch = source === 'netease' && (searchType === 'playlist' || searchType === 'user' || searchType === 'radio')
+      // 所有平台的搜索都走 jusic-serve WebSocket；播放地址在点歌/播放前通过 /music/pick 获取
+      const isNeteaseWsSearch = source === 'netease'
       const isQQWsSearch = source === 'tencent' && (searchType === 'playlist' || searchType === 'song')
       if (isNeteaseWsSearch || isQQWsSearch) {
         wx.showLoading({ title: '搜索中', mask: true })
@@ -175,7 +176,9 @@ Component({
             ? jusicWsApi.searchPlaylists(keyword)
             : searchType === 'radio'
               ? jusicWsApi.searchRadioPrograms(keyword)
-              : jusicWsApi.searchUsers(keyword)
+              : searchType === 'user'
+                ? jusicWsApi.searchUsers(keyword)
+                : jusicWsApi.searchNeteaseSongs(keyword)
         }
         this._searchRequest = search
         search.then(result => {
@@ -183,6 +186,11 @@ Component({
           const list = result && Array.isArray(result.list) ? result.list : []
           if (searchType === 'song' || searchType === 'radio') {
             this.setData({ songList: list })
+            fillSongCovers(list).then((songs) => {
+              if (requestId === this._searchRequestId) {
+                this.setData({ songList: songs.slice() })
+              }
+            })
           } else if (searchType === 'playlist' || searchType === 'userPlaylists') {
             this.setData({ playlistList: list })
           } else {
@@ -197,21 +205,7 @@ Component({
             wx.hideLoading()
           }
         })
-        return
       }
-
-      app.request({
-        url: 'song/search',
-        loading: '搜索中',
-        data: {
-            keyword,
-            source
-          },
-        success: res => {
-          if (requestId !== this._searchRequestId) return
-          this.setData({ songList: res.data || [] })
-        }
-      })
     },
     openPlaylist(e) {
       const playlist = e.mark.item
@@ -243,40 +237,10 @@ Component({
         [`userList[${e.currentTarget.dataset.index}].avatar`]: '/res/image/nohead.jpg'
       })
     },
-    addRadioProgram(song, playNow) {
+    // 点歌/播放前统一通过 WS /music/pick 获取播放直链
+    addSongToQueue(song, playNow) {
       wx.showLoading({ title: playNow ? '播放中' : '点歌中', mask: true })
-      jusicWsApi.pickRadioProgram(song).then(pickedSong => {
-        app.request({
-          url: playNow ? 'song/playSong' : 'song/addSong',
-          data: {
-            mid: pickedSong.mid,
-            source: pickedSong.source,
-            song: pickedSong,
-            room_id: app.globalData.roomInfo.room_id
-          },
-          success: () => {
-            wx.hideLoading()
-            wx.showToast({ title: playNow ? '播放成功' : '点歌成功' })
-          },
-          error: response => {
-            wx.hideLoading()
-            wx.showToast({ title: response.msg || (playNow ? '播放失败' : '点歌失败'), icon: 'none' })
-            return true
-          },
-          fail: error => {
-            wx.hideLoading()
-            wx.showToast({ title: error.message || (playNow ? '播放失败' : '点歌失败'), icon: 'none' })
-          }
-        })
-      }).catch(error => {
-        wx.hideLoading()
-        wx.showToast({ title: error.message || (playNow ? '播放失败' : '点歌失败'), icon: 'none' })
-      })
-    },
-    // QQ 歌曲点播：先向服务端要一份带签名的播放地址，再入队/播放
-    addQQSong(song, playNow) {
-      wx.showLoading({ title: playNow ? '播放中' : '点歌中', mask: true })
-      jusicWsApi.pickQQSong(song).then(pickedSong => {
+      jusicWsApi.ensurePlayableSong(song).then(pickedSong => {
         app.request({
           url: playNow ? 'song/playSong' : 'song/addSong',
           data: {
@@ -316,30 +280,7 @@ Component({
         success: (res) => {
           switch (menu[res.tapIndex]) {
             case '点歌':
-              if (song.source === 'wydt') {
-                this.addRadioProgram(song, false)
-                break
-              }
-              if (song.source === 'tencent') {
-                this.addQQSong(song, false)
-                break
-              }
-              app.request({
-                url: 'song/addSong',
-                data: {
-                  mid: song.mid,
-                  source: song.source,
-                  song: song,
-                  at: false,
-                  room_id: app.globalData.roomInfo.room_id
-                },
-                loading: '点歌中',
-                success: (res) => {
-                  wx.showToast({
-                    title: '点歌成功'
-                  })
-                }
-              })
+              this.addSongToQueue(song, false)
               break
             case '收藏':
               app.request({
@@ -359,29 +300,7 @@ Component({
               })
               break
             case '播放':
-              if (song.source === 'wydt') {
-                this.addRadioProgram(song, true)
-                break
-              }
-              if (song.source === 'tencent') {
-                this.addQQSong(song, true)
-                break
-              }
-              app.request({
-                url: 'song/playSong',
-                data: {
-                  mid: song.mid,
-                  source: song.source,
-                  song: song,
-                  room_id: app.globalData.roomInfo.room_id
-                },
-                loading: '播放中',
-                success: (res) => {
-                  wx.showToast({
-                    title: '播放成功'
-                  })
-                }
-              })
+              this.addSongToQueue(song, true)
               break
             default:
               break

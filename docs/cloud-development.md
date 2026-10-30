@@ -13,8 +13,8 @@ flowchart LR
     MINI --> STORAGE[云存储]
     CLOUD --> FUNC[musicApp 云函数]
     FUNC --> DB[(云数据库)]
-    FUNC -. 音乐适配 .-> MUSIC[Meting-API]
-    MINI -->|歌单/用户/详情| WS[jusic-serve WebSocket]
+    FUNC -. 网易云歌词 .-> LYRIC[music.163.com]
+    MINI -->|搜索/歌单/用户/点播直链| WS[jusic-serve WebSocket]
     WS --> JUSIC[线上 jusic-serve]
     JUSIC -. 音乐资源 .-> NETEASE[网易云音乐]
 ```
@@ -114,24 +114,23 @@ OPENID 不返回客户端，也不作为客户端请求参数。
 
 ## 音乐接口状态
 
-普通歌曲搜索、播放地址和歌词通过 `musicApp` 云函数访问 Meting-API，按平台路由：
+音乐搜索与播放地址统一由客户端通过 jusic-serve WebSocket 获取：
 
-```text
-netease           → https://meting.mikus.ink/api
-tencent / kugou / wydt → https://api.i-meto.com/meting/api
-```
+- 网易云、QQ 音乐和网易电台的歌曲/歌单/用户/电台搜索由 `utils/jusicWsApi.js` 直接请求，只返回元数据。
+- 播放地址在点歌/播放前通过 `/music/pick` 获取带签名的直链，随歌曲入队；直链失效时客户端重新点播一次，仍失败再自动切歌。
+- 网易云歌词由 `musicApp` 云函数请求 `https://music.163.com/api/song/lyric`，并做 30 分钟缓存；QQ 与电台歌曲不提供歌词。
+- 网易云搜索缺少封面时，客户端调用 `song/getCovers`，云函数请求 `https://music.163.com/api/song/detail` 批量补全，命中缓存 24 小时。
+- 酷狗 Meting 链路已停用，历史来源标识保留，但无法重新解析播放地址。
 
-QQ 播放地址由云函数按 `songmid` 调用 `meting.mikus.ink` 的 `type=song` 详情接口动态解析，不持久化限时地址。当前未配置备用回退接口。
-
-网易云歌单、用户、用户公开歌单和歌单歌曲详情由 `utils/jusicWsApi.js` 通过以下线上 WebSocket 通道访问，不经过云函数：
+WebSocket 地址：
 
 ```text
 wss://xin.hanxin.vip/server/{serverId}/{sessionId}/websocket
 ```
 
-云函数还支持定时触发器 `refillPlaybackQueue`：周期性检查默认房间播放队列，不足时按「我的歌曲收藏 / 房间缓存 / 搜索提示词」加权（5:3:2）自动补歌，收藏来源排除已标为儿歌的收藏；房间开启儿歌模式（`room/setChildrenMode`）后，自动补歌改为「儿歌收藏 / 云端儿歌词池」按权重（3:2）加权补入。
+云函数定时触发器 `refillPlaybackQueue` 周期性检查默认房间播放队列；客户端在线时先通过 WS 搜索提示词/儿歌词池候选并随 `song/refill` 提交，云函数与「我的歌曲收藏 / 房间缓存」按 5:3:2 或「儿歌收藏 / 词池候选」按 3:2 加权补入。定时触发时没有客户端候选，只使用收藏和缓存。
 
-详细请求 destination、握手顺序和返回字段见 [meting-api.md](./meting-api.md)。云函数仍负责把普通歌曲和播放资源转换为项目统一歌曲结构。
+详细 destination、握手顺序、播放地址与歌词说明见 [meting-api.md](./meting-api.md)。
 
 云数据库中的歌曲统一使用以下结构：
 
@@ -157,12 +156,12 @@ wss://xin.hanxin.vip/server/{serverId}/{sessionId}/websocket
 7. 将云存储权限设置为「所有用户可读，仅创建者可写」，确保跨用户头像、图片和语音可读。
 8. 验证已有用户可静默进入；新用户须勾选协议同意并通过微信一键登录创建。
 9. 验证默认房间、消息发送、语音录制、引用回复、数据库监听和图片上传。
-10. 验证 Meting-API 搜索、播放地址、封面和歌词，并确认音频地址在真机可用。
+10. 验证网易云/QQ/电台搜索、WS `/music/pick` 播放直链、封面和网易云歌词，并确认音频地址在真机可播放。
 11. 验证网易云歌单搜索、网易云用户搜索、用户公开歌单和歌单歌曲详情。
 12. 在微信公众平台和开发者工具中配置 `https://xin.hanxin.vip` 为 request 合法域名、`wss://xin.hanxin.vip` 为 socket 合法域名；`urlCheck: false` 只放宽开发者工具校验，不能替代生产环境配置。确认该域名的 TLS 证书在目标微信版本和真机上有效。
 
 ## 当前边界
 
-- `musicApp` 云函数负责登录、聊天室、歌曲队列、收藏、普通歌曲搜索、播放地址和歌词。
-- `utils/jusicWsApi.js` 负责网易云歌单搜索、用户搜索、用户公开歌单和歌单歌曲详情。
+- `musicApp` 云函数负责登录、聊天室、歌曲队列、收藏和网易云歌词，不再发起音乐搜索或播放地址请求。
+- `utils/jusicWsApi.js` 负责网易云/QQ/电台的歌曲、歌单、用户、电台搜索，以及 `/music/pick` 播放直链获取。
 - 小程序通过云数据库权限和云函数完成业务数据读写，客户端不直接写入业务集合。

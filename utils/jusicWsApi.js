@@ -1,5 +1,5 @@
 /**
- * 网易云歌单、用户、歌曲，以及 QQ 音乐歌单相关功能 —— 通过 jusic-serve 的 SockJS + STOMP 通道。
+ * 网易云与 QQ 音乐的搜索、歌单、用户和播放直链 —— 通过 jusic-serve 的 SockJS + STOMP 通道。
  *
  * 连接地址和业务帧均按线上服务实测协议实现：
  *   1. WebSocket 路径：/server/{100~999}/{sessionId}/websocket
@@ -7,13 +7,12 @@
  *   3. STOMP 就绪帧：CONNECTED；业务请求从此时开始发送
  *   4. SockJS 业务帧：a["TYPE\\n...\\n\\n{json}"]
  *
- * QQ 歌曲搜索只返回元数据（songmid、歌名、歌手、专辑、封面、时长），播放地址需要向
- * /music/pick 发起点播后由服务端在 PICK 帧中返回；该地址带签名，点歌/播放时随歌曲一起入队。
+ * 搜索接口只返回元数据；播放地址统一在点歌/播放前向 /music/pick 发起点播，
+ * 由服务端在 PICK 帧中返回带签名的直链。
  */
 
 const WS_BASE = 'wss://xin.hanxin.vip/server'
 const WS_INFO_URL = 'https://xin.hanxin.vip/server/info'
-const NETEASE_MUSIC_API_URL = 'https://meting.mikus.ink/api'
 const HOUSE_ID = 'DEFAULT'
 const HOUSE_PWD = ''
 const BASIC_AUTH = ''
@@ -616,6 +615,20 @@ function httpsUrl(value) {
   return String(value || '').replace(/^http:\/\//i, 'https://')
 }
 
+/** 服务端直链中偶尔带有字面量 \\u0026 或 &amp;，需要还原成 & 才能播放 */
+function decodeAudioUrl(value) {
+  return httpsUrl(String(value || '').replace(/\\u0026/gi, '&').replace(/&amp;/gi, '&'))
+}
+
+/** 判断是否为可直接交给播放器的音频直链；历史旧接口地址会被排除 */
+function playableAudioUrl(value) {
+  const url = decodeAudioUrl(value)
+  if (!/^https:\/\//i.test(url)) return ''
+  if (/\/meting\/api(?:\?|$)/i.test(url)) return ''
+  if (/[?&]type=url(?:&|$)/i.test(url)) return ''
+  return url
+}
+
 function decodeHtmlEntities(value) {
   return String(value || '')
     .replace(/&#(\d+);/g, (match, code) => {
@@ -679,7 +692,6 @@ function mapSong(item, source = 'netease') {
   const album = raw.album || raw.al || ''
   const picture = raw.pictureUrl || raw.picture_url || raw.pic || raw.picUrl
     || (album && (album.pictureUrl || album.picture_url || album.picUrl)) || ''
-  const musicApiUrl = `${NETEASE_MUSIC_API_URL}?server=netease`
   const singerValue = raw.artist || raw.artists || raw.author || raw.singer || ''
   const singer = Array.isArray(singerValue)
     ? singerValue.map(item => typeof item === 'object' ? item.name || item.nickname || '' : item).filter(Boolean).join('/')
@@ -700,13 +712,9 @@ function mapSong(item, source = 'netease') {
     album: albumNameOf(album),
     pic: cover,
     cover,
-    // QQ WS 搜索结果不携带播放地址；显式返回空字符串，阻止后续误把其他平台地址当成 QQ 地址。
-    url: isQQ || source === 'wydt' ? '' : (httpsUrl(raw.url) || `${musicApiUrl}&type=url&id=${encodeURIComponent(mid)}`),
-    lrc: isQQ || source === 'wydt'
-      ? []
-      : (typeof raw.lrc === 'string' && /^https?:\/\//i.test(raw.lrc)
-        ? httpsUrl(raw.lrc)
-        : `${musicApiUrl}&type=lrc&id=${encodeURIComponent(mid)}`),
+    // WS 搜索结果只提供元数据；播放地址在点歌/播放前由 /music/pick 下发
+    url: isQQ || source === 'wydt' ? '' : playableAudioUrl(raw.url),
+    lrc: [],
     duration
   }
 }
@@ -722,12 +730,14 @@ function findPickedSong(body, program, source = 'wydt') {
         ? data.songs
         : [data]
   const expectedId = String(program.mid || program.id || '')
-  const mapSource = source === 'qq' ? 'tencent' : source
-  for (const item of items) {
+  const mapSource = source === 'qq' ? 'tencent' : (source === 'wy' ? 'netease' : source)
+  // 同一首歌可能重复入队，优先取最新的一条，避免拿到旧签名地址
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const item = items[index]
     const raw = item && (item.song || item.music || item)
     if (!raw) continue
     const id = String(raw.id || raw.mid || raw.songmid || '')
-    const url = httpsUrl(raw.url || raw.musicUrl || raw.playUrl || '')
+    const url = playableAudioUrl(raw.url || raw.musicUrl || raw.playUrl || '')
     if (!id || id !== expectedId || !url) continue
     const mapped = mapSong({ ...program, ...raw, id }, mapSource)
     if (!mapped) continue
@@ -760,20 +770,35 @@ function onBroadcast(handler) {
   }
 }
 
-function pickRadioProgram(program) {
+const PICK_SOURCES = { netease: 'wy', tencent: 'qq', wydt: 'wydt' }
+
+/**
+ * 通用点播：向 /music/pick 发起点播，服务端在 PICK 帧里回传带签名的播放直链。
+ * 搜索结果只含元数据，所有平台的播放地址都在点歌/播放前通过这里获取。
+ */
+function pickSong(song, sourceCode) {
+  const code = sourceCode || PICK_SOURCES[song && song.source] || ''
+  if (!code) {
+    return Promise.reject(new Error('暂不支持该平台的播放地址'))
+  }
+  const id = String((song && (song.mid || song.id)) || '')
+  if (!id) {
+    return Promise.reject(new Error('歌曲标识无效'))
+  }
   return ensureConnected().then(() => new Promise((resolve, reject) => {
     if (currentPick) {
       reject(new Error('上一次点播尚未完成，请稍候'))
       return
     }
-    const timer = setTimeout(() => settlePick(null, new Error('点播超时，请重试')), REQUEST_TIMEOUT)
-    currentPick = { resolve, reject, timer, program, source: 'wydt' }
+    const timer = setTimeout(() => settlePick(null, new Error('获取播放地址超时，请重试')), REQUEST_TIMEOUT)
+    currentPick = { resolve, reject, timer, program: song, source: code }
     const payload = {
-      id: program.id,
-      name: program.name,
-      artist: program.artists || program.artist || '',
-      duration: program.duration || 0,
-      source: 'wydt',
+      id,
+      name: song.name || '',
+      artist: song.singer || song.artists || song.artist || '',
+      duration: song.duration || 0,
+      source: code,
+      quality: '320k',
       sendTime: Date.now()
     }
     const frame = 'SEND\ndestination:/music/pick\n\n' + JSON.stringify(payload) + '\u0000'
@@ -784,37 +809,16 @@ function pickRadioProgram(program) {
   }))
 }
 
-/**
- * QQ 歌曲不返回播放地址，点播时需要先向服务端发起 /music/pick，
- * 由服务端解析后在 PICK 帧里回传带签名的 url。
- */
-function pickQQSong(song) {
-  return ensureConnected().then(() => new Promise((resolve, reject) => {
-    const id = String(song.mid || song.id || '')
-    if (!id) {
-      reject(new Error('歌曲标识无效'))
-      return
-    }
-    if (currentPick) {
-      reject(new Error('上一次点播尚未完成，请稍候'))
-      return
-    }
-    const timer = setTimeout(() => settlePick(null, new Error('获取播放地址超时，请重试')), REQUEST_TIMEOUT)
-    currentPick = { resolve, reject, timer, program: song, source: 'qq' }
-    const payload = {
-      id,
-      name: song.name,
-      artist: song.singer || song.artist || '',
-      duration: song.duration || 0,
-      source: 'qq',
-      sendTime: Date.now()
-    }
-    const frame = 'SEND\ndestination:/music/pick\n\n' + JSON.stringify(payload) + '\u0000'
-    socketTask.send({
-      data: JSON.stringify([frame]),
-      fail: error => settlePick(null, new Error('发送失败：' + (error.errMsg || '')))
-    })
-  }))
+/** 点歌或播放前确保歌曲带有可用的直链：已有直链直接返回，force 或缺失时走 WS 点播获取 */
+function ensurePlayableSong(song, forcePick = false) {
+  if (!song) {
+    return Promise.reject(new Error('歌曲数据无效'))
+  }
+  const direct = forcePick ? '' : playableAudioUrl(song.url)
+  if (direct) {
+    return Promise.resolve({ ...song, url: direct })
+  }
+  return pickSong(song)
 }
 
 function mapRequest(requestPromise, mapper) {
@@ -968,6 +972,18 @@ function getQQPlaylistSongs(playlistId, options = {}) {
   })
 }
 
+function searchNeteaseSongs(keywords, options = {}) {
+  const page = normalizePageNumber(options.page)
+  const pageSize = normalizePageSize(options.pageSize, 20)
+  return mapRequest(request('/music/search', {
+    name: String(keywords || ''),
+    sendTime: Date.now(),
+    source: 'wy',
+    pageIndex: page,
+    pageSize
+  }, 'SEARCH'), data => pageResult(data, item => mapSong(item, 'netease'), page, pageSize))
+}
+
 function searchRadioPrograms(keywords, options = {}) {
   const page = normalizePageNumber(options.page)
   const pageSize = normalizePageSize(options.pageSize, 20)
@@ -1071,11 +1087,12 @@ module.exports = {
   searchUsers,
   getUserPlaylists,
   getPlaylistDetail,
+  searchNeteaseSongs,
   searchQQPlaylists,
   searchQQSongs,
   searchRadioPrograms,
-  pickRadioProgram,
-  pickQQSong,
+  pickSong,
+  ensurePlayableSong,
   onBroadcast,
   getQQUserPlaylists,
   getQQPlaylistSongs,

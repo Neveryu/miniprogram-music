@@ -1,5 +1,6 @@
 const app = getApp()
 const jusicWsApi = require('../../utils/jusicWsApi.js')
+const { fillSongCovers } = require('../../utils/cover.js')
 
 const decodeOption = (value, fallback = '') => {
   try {
@@ -79,6 +80,11 @@ Component({
           hasLoaded: true,
           hasMore: Boolean(result && result.hasMore)
         })
+        fillSongCovers(songList).then((songs) => {
+          if (requestId === this._detailRequestId) {
+            this.setData({ songList: songs.slice() })
+          }
+        })
       }).catch(error => {
         if (requestId !== this._detailRequestId || (error && error.code === 'JUSIC_REQUEST_CANCELLED')) return
         this.setData({ hasLoaded: true })
@@ -150,13 +156,10 @@ Component({
       })
     },
 
-    // QQ 歌曲需要先经 /music/pick 取服务端下发的播放直链
+    // 点歌/播放前通过 WS /music/pick 获取播放直链
     resolvePickedSong(song) {
-      if (!song || song.source !== 'tencent') {
-        return Promise.resolve(song)
-      }
       wx.showLoading({ title: '准备中', mask: true })
-      return jusicWsApi.pickQQSong(song).then(pickedSong => {
+      return jusicWsApi.ensurePlayableSong(song).then(pickedSong => {
         wx.hideLoading()
         return pickedSong
       }).catch(error => {

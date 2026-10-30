@@ -1,6 +1,9 @@
 import config from '../../config/index.js'
 import api from '../../config/api.js'
 const app = getApp()
+const jusicWsApi = require('../../utils/jusicWsApi.js')
+const { pickChildrenKeywords } = require('../../utils/childrenKeywords.js')
+const { fillSongCovers } = require('../../utils/cover.js')
 Page({
   data: {
     // 值应为某子元素id（id不能以数字开头）。设置哪个方向可滚动，则在哪个方向滚动到该元素
@@ -175,6 +178,13 @@ Page({
       if (!songInfo || !songInfo.song) {
         return
       }
+      // 直链可能过期：先重新点播一次，仍失败再自动切歌
+      if (this.retryPickSongId !== songInfo._id) {
+        this.retryPickSongId = songInfo._id
+        this.repickAndPlay(songInfo)
+        return
+      }
+      this.retryPickSongId = ''
       this.autoPassUnavailableSong(songInfo, error)
     })
     /**
@@ -569,6 +579,9 @@ Page({
   },
   // 播放音乐
   playMusic(msg) {
+    this.refillRetryCount = 0
+    clearTimeout(this.refillRetryTimer)
+    this.refillRetryTimer = null
     this.data.playerSwitchingUntil = Date.now() + 1800
     this.setData({
       songInfo: msg,
@@ -589,86 +602,104 @@ Page({
     this.setData({
       messageList: this.data.messageList
     })
-    if (msg.song.source === 'wydt') {
-      this.data.bgPlayer.src = msg.song.url
-      this.data.bgPlayer.title = msg.song.name + ' - ' + msg.song.singer
-      this.data.bgPlayer.singer = '点歌人: ' + decodeURIComponent(msg.user.user_name) + ' ' + this.data.roomInfo.room_name + ' '
-      this.data.bgPlayer.coverImgUrl = msg.song.pic
-      this.data.bgPlayer.webUrl = msg.song.pic
-      this.data.bgPlayer.seek(parseInt(new Date().valueOf() / 1000) - msg.since)
-      if (this.data.isMusicPlaying) {
+    this.retryPickSongId = ''
+    const directUrl = this.getDirectPlaybackUrl(msg.song.url)
+    if (directUrl) {
+      this.startPlayback(msg, directUrl)
+      return
+    }
+    this.resolveAndPlay(msg)
+  },
+  // 是否为可直接交给播放器的音频直链（排除历史旧接口地址）
+  getDirectPlaybackUrl(url) {
+    const value = String(url || '').replace(/^http:\/\//i, 'https://')
+      .replace(/\\u0026/gi, '&')
+      .replace(/&amp;/gi, '&')
+    if (!/^https:\/\//i.test(value)) return ''
+    if (/\/meting\/api(?:\?|$)/i.test(value)) return ''
+    if (/[?&]type=url(?:&|$)/i.test(value)) return ''
+    return value
+  },
+  // 统一设置播放器并开始播放
+  startPlayback(msg, url, announce = true) {
+    this.data.bgPlayer.src = url
+    this.data.bgPlayer.title = msg.song.name + ' - ' + msg.song.singer
+    this.data.bgPlayer.singer = '点歌人: ' + decodeURIComponent(msg.user.user_name) + ' ' + this.data.roomInfo.room_name + ' '
+    this.data.bgPlayer.coverImgUrl = msg.song.pic
+    this.data.bgPlayer.webUrl = msg.song.pic
+    this.data.bgPlayer.seek(parseInt(new Date().valueOf() / 1000) - msg.since)
+    if (this.data.isMusicPlaying) {
+      if (announce) {
         this.addSystemMessage('正在播放 ' + decodeURIComponent(msg.user.user_name) + ' 点的 ' + msg.song.name + '(' + msg.song.singer + ')')
-        this.data.bgPlayer.play()
-      } else {
-        this.data.bgPlayer.stop()
       }
-      return
+      this.data.bgPlayer.play()
+    } else {
+      this.data.bgPlayer.stop()
     }
-    if (!msg.song.url && msg.song.source !== 'tencent') {
+  },
+  // 点播返回的歌曲可能带封面；同步到当前歌曲并补全缺失封面
+  applyPickedSong(msg, pickedSong, url) {
+    const pic = pickedSong.pic || msg.song.pic || ''
+    msg.song.url = url
+    msg.song.pic = pic
+    this.setData({
+      'songInfo.song.url': url,
+      'songInfo.song.pic': pic
+    })
+    if (!pic) {
+      fillSongCovers([msg.song]).then((songs) => {
+        const cover = songs[0] && songs[0].pic
+        if (!cover || !this.data.songInfo || this.data.songInfo._id !== msg._id) {
+          return
+        }
+        this.setData({ 'songInfo.song.pic': cover })
+        this.data.bgPlayer.coverImgUrl = cover
+        this.data.bgPlayer.webUrl = cover
+      })
+    }
+  },
+  // 播放失败后重新点播一次，拿到新直链再播放
+  repickAndPlay(msg) {
+    jusicWsApi.pickSong(msg.song).then((pickedSong) => {
+      if (!this.data.songInfo || this.data.songInfo._id !== msg._id) {
+        return
+      }
+      const url = this.getDirectPlaybackUrl(pickedSong.url)
+      if (!url) {
+        this.autoPassUnavailableSong(msg)
+        return
+      }
+      this.data.playerSwitchingUntil = Date.now() + 1800
+      this.applyPickedSong(msg, pickedSong, url)
+      this.startPlayback(msg, url, false)
+    }).catch(() => {
+      if (!this.data.songInfo || this.data.songInfo._id !== msg._id) {
+        return
+      }
       this.autoPassUnavailableSong(msg)
-      return
-    }
-    app.request({
-      url: 'song/getUrl',
-      data: { source: msg.song.source, mid: msg.song.mid, url: msg.song.url },
-      success: (res) => {
-        if (!this.data.songInfo || this.data.songInfo._id !== msg._id) {
-          return
-        }
-        if (!res.data || !/^https:\/\//i.test(String(res.data))) {
-          this.autoPassUnavailableSong(msg)
-          return
-        }
-        this.data.bgPlayer.src = res.data
-        this.data.bgPlayer.title = msg.song.name + ' - ' + msg.song.singer
-        this.data.bgPlayer.singer = '点歌人: ' + decodeURIComponent(msg.user.user_name) + ' ' + this.data.roomInfo.room_name + ' '
-        this.data.bgPlayer.coverImgUrl = msg.song.pic
-        this.data.bgPlayer.webUrl = msg.song.pic
-        this.data.bgPlayer.seek(parseInt(new Date().valueOf() / 1000) - msg.since)
-        if (this.data.isMusicPlaying) {
-          this.addSystemMessage('正在播放 ' + decodeURIComponent(msg.user.user_name) + ' 点的 ' + msg.song.name + '(' + msg.song.singer + ')')
-          this.data.bgPlayer.play()
-        } else {
-          this.data.bgPlayer.stop()
-        }
-      },
-      error: (response) => {
-        const errmsg = response.msg || ''
-        if (/资源不可用|HTTP/.test(errmsg)) {
-          this.autoPassUnavailableSong(msg)
-          return true
-        }
-        if (this.data.songInfo && this.data.songInfo._id === msg._id) {
-          this.data.bgPlayer.stop()
-          this.setData({
-            songInfo: null,
-            musicLrcObj: [],
-            lrcString: ''
-          })
-        }
-        wx.showToast({
-          title: errmsg || '当前歌曲暂时无法播放',
-          icon: 'none'
-        })
-        return true
-      },
-      fail: (error) => {
-        const message = `${error.errCode || error.code || ''} ${error.errMsg || error.message || ''}`
-        if (/-504003|timed out after (?:3|5) seconds|functions_time_limit_exceeded/i.test(message)) {
-          this.autoPassUnavailableSong(msg)
-          return
-        }
-        wx.showToast({
-          title: '云服务暂时不可用',
-          icon: 'none'
-        })
+    })
+  },
+  // 没有直链时通过 WS /music/pick 获取播放地址
+  resolveAndPlay(msg) {
+    jusicWsApi.ensurePlayableSong(msg.song).then((pickedSong) => {
+      if (!this.data.songInfo || this.data.songInfo._id !== msg._id) {
+        return
       }
+      this.applyPickedSong(msg, pickedSong, pickedSong.url)
+      this.startPlayback(msg, pickedSong.url)
+    }).catch(() => {
+      if (!this.data.songInfo || this.data.songInfo._id !== msg._id) {
+        return
+      }
+      this.autoPassUnavailableSong(msg)
     })
   },
   refillPlaybackQueue() {
     if (this.data.isRefillingQueue || !app.globalData.userInfo) {
       return
     }
+    clearTimeout(this.refillRetryTimer)
+    this.refillRetryTimer = null
     const requestId = this.data.refillRequestId + 1
     this.data.refillRequestId = requestId
     this.setData({ isRefillingQueue: true })
@@ -677,17 +708,72 @@ Page({
         this.setData({ isRefillingQueue: false })
       }
     }
-    setTimeout(finish, 12000)
-    app.request({
-      url: 'song/refill',
-      data: { count: 3 },
-      success: finish,
-      error: () => {
-        finish()
-        return true
-      },
-      fail: finish
+    setTimeout(finish, 18000)
+    // 客户端先用 WS 搜索候选，再交给云函数与收藏/缓存按权重混入队列
+    this.buildRefillCandidates().then((candidates) => {
+      app.request({
+        url: 'song/refill',
+        data: { count: 3, candidates },
+        success: (res) => {
+          const data = res.data || {}
+          if (data.added > 0) {
+            this.refillRetryCount = 0
+          }
+          finish()
+          // 补歌被并发锁挡住或没有可用候选时，延迟重试，避免空队列一直停留
+          if (/正在准备/.test(res.msg || '') || (!data.added && !data.remaining)) {
+            this.scheduleRefillRetry()
+          }
+        },
+        error: () => {
+          finish()
+          return true
+        },
+        fail: finish
+      })
     })
+  },
+  // 通过 WS 搜索自动补歌候选：正常模式抽一个提示词，儿歌模式抽 1 聚合 + 2 歌名
+  buildRefillCandidates() {
+    const room = this.data.roomInfo || app.globalData.roomInfo || {}
+    const timeout = new Promise((resolve) => setTimeout(() => resolve([]), 6000))
+    let search
+    if (room.children_mode) {
+      const keywords = pickChildrenKeywords()
+      search = Promise.all(keywords.map((keyword) => jusicWsApi.searchNeteaseSongs(keyword, { pageSize: 10 })
+        .then((result) => result.list || [])
+        .catch(() => [])))
+        .then((groups) => {
+          const songs = groups.flat().filter((song) => song && song.mid)
+          const result = []
+          while (songs.length && result.length < 20) {
+            result.push(songs.splice(Math.floor(Math.random() * songs.length), 1)[0])
+          }
+          return result.map((song) => ({ source: 'children', song }))
+        })
+    } else {
+      const prompts = Array.isArray(room.search_prompts) && room.search_prompts.length
+        ? room.search_prompts
+        : ['周杰伦', '流行歌曲', '经典歌曲', '精选']
+      const keyword = prompts[Math.floor(Math.random() * prompts.length)]
+      search = jusicWsApi.searchNeteaseSongs(keyword, { pageSize: 20 })
+        .then((result) => (result.list || []).filter((song) => song && song.mid).slice(0, 15)
+          .map((song) => ({ source: 'prompt', song })))
+        .catch(() => [])
+    }
+    return Promise.race([search, timeout])
+  },
+  scheduleRefillRetry() {
+    const retries = this.refillRetryCount || 0
+    if (retries >= 2) {
+      return
+    }
+    this.refillRetryCount = retries + 1
+    clearTimeout(this.refillRetryTimer)
+    this.refillRetryTimer = setTimeout(() => {
+      this.refillRetryTimer = null
+      this.refillPlaybackQueue()
+    }, 4000)
   },
   autoPassUnavailableSong(msg) {
     if (!msg || !msg.song || this.data.failedSongPassId === msg._id) {
@@ -1481,10 +1567,18 @@ Page({
       url: '../user/login?bbbug=' + app.globalData.systemVersion
     })
   },
+  // 空队列时从播放器直接进入点歌页
+  goSelectSong() {
+    wx.navigateTo({
+      url: '../song/select?bbbug=' + app.globalData.systemVersion
+    })
+  },
   onUnload() {
     if (this.offLogin) {
       this.offLogin()
     }
+    clearTimeout(this.refillRetryTimer)
+    this.refillRetryTimer = null
     this.closeCloudWatchers()
     if (this.data.isRecording && this.data.recorderManager) {
       this.data.discardVoiceResult = true

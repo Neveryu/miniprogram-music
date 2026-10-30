@@ -118,6 +118,12 @@
     background: linear-gradient(135deg, #333, #252a35);
   }
 
+  /* 头像/封面加载前的占位底色，避免深色页面出现浅灰块 */
+  .user-summary .user-avatar,
+  .result-cover {
+    background-color: #333333;
+  }
+
   .user-summary-name {
     color: #eee;
   }

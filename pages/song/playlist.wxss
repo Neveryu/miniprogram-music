@@ -140,6 +140,12 @@
     background: linear-gradient(135deg, #333, #252a35);
   }
 
+  /* 封面加载前的占位底色，避免深色页面出现浅灰块 */
+  .playlist-header-cover,
+  .result-cover {
+    background-color: #333333;
+  }
+
   .playlist-title {
     color: #eee;
   }

@@ -1,4 +1,5 @@
 const app = getApp()
+const jusicWsApi = require('../../utils/jusicWsApi.js')
 
 // 内置精选儿歌曲库：点击后按关键词从网易云搜索取第一首点播
 const CATEGORIES = [
@@ -225,12 +226,18 @@ Component({
         loading: next ? '正在开启' : '正在关闭',
         data: { enabled: next },
         success: (res) => {
+          // 仅当云函数明确返回 has_song=false 时才需要客户端兜底搜索
+          const hasSong = !(res.data && res.data.has_song === false)
           this.setData({
             childrenMode: !!(res.data && res.data.children_mode),
             toggling: false
           })
           wx.showToast({ title: res.msg || '操作成功', icon: 'none' })
           if (next) {
+            // 没有儿歌收藏时，云函数无法搜索，由客户端通过 WS 搜一首并播放
+            if (!hasSong) {
+              this.playFirstChildrenSong()
+            }
             setTimeout(() => wx.navigateBack(), 800)
           }
         },
@@ -270,7 +277,7 @@ Component({
       const song = songs[Math.floor(Math.random() * songs.length)]
       this.addSongToQueue(song)
     },
-    // 按关键词搜索并点播第一首
+    // 按关键词通过 WS 搜索，取第一首并获取播放直链后点歌
     addSongToQueue(song) {
       if (this.data.requesting) {
         return
@@ -280,52 +287,70 @@ Component({
         title: '找歌中',
         mask: true
       })
-      app.request({
-        url: 'song/search',
-        data: {
-          keyword: song.keyword,
-          source: 'netease'
-        },
-        success: (res) => {
-          const found = (res.data || [])[0]
-          if (!found || !found.mid) {
-            this.finishRequest()
-            wx.showToast({ title: '没有找到这首歌，换一首试试', icon: 'none' })
-            return
-          }
+      jusicWsApi.searchNeteaseSongs(song.keyword, { pageSize: 10 }).then(result => {
+        const found = (result.list || [])[0]
+        if (!found || !found.mid) {
+          this.finishRequest()
+          wx.showToast({ title: '没有找到这首歌，换一首试试', icon: 'none' })
+          return null
+        }
+        return jusicWsApi.ensurePlayableSong(found).then(pickedSong => new Promise((resolve) => {
           app.request({
             url: 'song/addSong',
             data: {
-              mid: found.mid,
-              source: found.source,
-              song: found,
+              mid: pickedSong.mid,
+              source: pickedSong.source,
+              song: pickedSong,
               room_id: app.globalData.roomInfo.room_id
             },
             success: () => {
               this.finishRequest()
               wx.showToast({ title: '已点《' + song.name + '》', icon: 'none' })
+              resolve()
             },
             error: (response) => {
               this.finishRequest()
               wx.showToast({ title: response.msg || '点歌失败', icon: 'none' })
+              resolve()
               return true
             },
             fail: () => {
               this.finishRequest()
               wx.showToast({ title: '点歌失败，请重试', icon: 'none' })
+              resolve()
             }
           })
-        },
-        error: (response) => {
-          this.finishRequest()
-          wx.showToast({ title: response.msg || '搜索失败，请重试', icon: 'none' })
-          return true
-        },
-        fail: () => {
-          this.finishRequest()
-          wx.showToast({ title: '搜索失败，请重试', icon: 'none' })
-        }
+        }))
+      }).catch(error => {
+        this.finishRequest()
+        wx.showToast({ title: error.message || '搜索失败，请重试', icon: 'none' })
       })
+    },
+    // 开启儿歌模式后没有儿歌收藏时的首曲兜底：WS 搜索并立即播放
+    playFirstChildrenSong() {
+      jusicWsApi.searchNeteaseSongs('儿歌', { pageSize: 10 }).then(result => {
+        const found = (result.list || [])[0]
+        if (!found || !found.mid) {
+          return null
+        }
+        return jusicWsApi.ensurePlayableSong(found).then(pickedSong => new Promise((resolve) => {
+          app.request({
+            url: 'song/addSong',
+            data: {
+              mid: pickedSong.mid,
+              source: pickedSong.source,
+              song: pickedSong,
+              room_id: app.globalData.roomInfo.room_id
+            },
+            success: resolve,
+            error: () => {
+              resolve()
+              return true
+            },
+            fail: resolve
+          })
+        }))
+      }).catch(() => {})
     },
     finishRequest() {
       wx.hideLoading()

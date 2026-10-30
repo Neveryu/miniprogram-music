@@ -1,4 +1,5 @@
 const app = getApp()
+const { fillSongCovers } = require('../../utils/cover.js')
 Component({
   /**
    * 组件的属性列表
@@ -40,6 +41,8 @@ Component({
       })
     },
     getSongList() {
+      const requestId = (this._queueRequestId || 0) + 1
+      this._queueRequestId = requestId
       app.request({
         url: 'song/songList',
         loading: '加载中',
@@ -47,8 +50,15 @@ Component({
           room_id: app.globalData.roomInfo.room_id
         },
         success: (res) => {
+          if (requestId !== this._queueRequestId) return
+          const songList = Array.isArray(res.data) ? res.data : []
           this.setData({
-            songList: res.data
+            songList
+          })
+          fillSongCovers(songList.map((item) => item.song)).then(() => {
+            if (requestId === this._queueRequestId) {
+              this.setData({ songList: songList.slice() })
+            }
           })
         }
       })

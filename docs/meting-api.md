@@ -1,256 +1,180 @@
-# Meting-API 使用说明
+# 音乐接口与 WebSocket 说明
 
-## 1. 服务概览
+> 文件名保留历史路径，内容已迁移为 jusic-serve WebSocket 与网易云歌词说明。
 
-项目按平台路由两个 Meting-API 实例：
+## 1. 架构概览
 
-| 平台（`server`） | 接口地址 |
-| --- | --- |
-| `netease` 网易云 | `https://meting.mikus.ink/api` |
-| `tencent` QQ 音乐、`kugou` 酷狗、`wydt` 网易电台 | `https://api.i-meto.com/meting/api` |
+项目不再依赖 Meting-API。音乐能力分为两部分：
 
-当前未配置备用回退接口（云函数中 `getFallbackMusicApiUrl` 返回空），主接口失败时直接向客户端返回错误。
+| 能力 | 通道 | 说明 |
+| --- | --- | --- |
+| 歌曲、歌单、用户、电台搜索 | jusic-serve SockJS + STOMP | 小程序端 `utils/jusicWsApi.js` 直连，返回歌曲元数据 |
+| 播放地址 | jusic-serve `/music/pick` | 点歌/播放前获取带签名的直链，随歌曲入队 |
+| 网易云封面 | 网易云官方歌曲详情接口 | `song/getCovers` 批量补全搜索/收藏/队列中缺失的封面，命中后缓存 24 小时 |
+| 网易云歌词 | 网易云官方歌词接口 | `musicApp` 云函数请求 `https://music.163.com/api/song/lyric`，并做 30 分钟缓存 |
 
-普通歌曲搜索、播放地址、封面和歌词由 `musicApp` 云函数访问；网易云歌单、用户及歌单歌曲详情由小程序通过 jusic-serve 的 WebSocket 通道访问。QQ 歌单和 QQ 用户歌单歌曲同样通过 jusic-serve 获取元数据，不拼接 Meting 播放地址；QQ 播放地址在点歌时经 `/music/pick` 获取服务端下发的签名直链随歌曲入队，失效时才回退到 `meting.mikus.ink` 的 `type=song` 详情接口（详见第 5 节）。
+搜索接口不返回 `url` 和 `lyric`；播放地址统一由点播帧下发。QQ 音乐与电台歌曲不提供歌词。
 
 服务项目地址：
 
 ```text
-https://github.com/mikus-loli/Meting-API
+https://xin.hanxin.vip/
 ```
 
-## 2. 请求格式
+## 2. WebSocket 连接
 
-基础请求格式：
-
-```text
-GET /api?server={server}&type={type}&id={id}
-```
-
-完整示例：
-
-```text
-https://meting.mikus.ink/api?server=netease&type=search&id=晴天
-```
-
-公共参数：
-
-| 参数 | 必填 | 说明 |
-| --- | --- | --- |
-| `server` | 是 | 音乐平台，`netease`、`tencent`、`kugou` 或 `wydt` |
-| `type` | 是 | 数据类型 |
-| `id` | 是 | 歌曲 ID、歌单 ID、歌手 ID 或搜索词 |
-| `auth` | 否 | 服务端配置的授权参数，按实例配置使用 |
-| `r` | 否 | 部分前端插件使用的附加参数 |
-
-参数必须进行 URL 编码，尤其是中文搜索词和包含特殊字符的 ID。
-
-## 3. 数据类型
-
-| `type` | 作用 | 网易云 | QQ 音乐 | 酷狗 |
-| --- | --- | --- | --- | --- |
-| `song` | 获取单曲信息 | 支持 | 支持 | 支持 |
-| `playlist` | 获取歌单歌曲 | 支持 | 支持 | 支持 |
-| `artist` | 获取歌手歌曲 | 支持 | 不支持 | 支持 |
-| `search` | 搜索歌曲 | 支持 | 支持 | 支持 |
-| `url` | 获取播放地址 | 支持 | 支持 | 支持 |
-| `lrc` | 获取歌词 | 支持 | 支持 | 支持 |
-| `pic` | 获取封面地址 | 支持 | 支持 | 支持 |
-
-平台值：
-
-```text
-netease   网易云音乐
-tencent   QQ音乐
-kugou     酷狗音乐
-wydt      网易云电台节目
-```
-
-## 4. 网易云歌单与用户页面接口
-
-搜索点歌页支持以下网易云资源链路：
-
-```text
-搜索歌单 → 打开歌单详情 → 查看歌曲并点歌
-搜索用户 → 打开用户公开歌单 → 打开歌单详情 → 查看歌曲并点歌
-```
-
-这部分使用 `utils/jusicWsApi.js` 连接 jusic-serve 的 SockJS + STOMP 通道。当前线上服务地址为：
+连接地址：
 
 ```text
 wss://xin.hanxin.vip/server/{serverId}/{sessionId}/websocket
+  ?houseId=DEFAULT&housePwd=&connectType=enter
 ```
 
-连接前会请求 `https://xin.hanxin.vip/server/info?t=...` 获取 SockJS 能力信息；当响应提供 `Set-Cookie` 时，封装层会提取 Cookie 并带入 WebSocket 握手。即使微信运行环境不暴露该响应头，封装层仍会尝试建立连接，因为服务端允许无 Cookie 的连接路径。
-
-连接地址中的 `serverId` 为 `100` 到 `999` 的随机编号，`sessionId` 为随机会话字符串。WebSocket 打开后先收到 SockJS `o` 帧，再发送：
+- `serverId`：100 到 999 的随机编号。
+- `sessionId`：随机会话字符串。
+- 连接建立后会收到 SockJS `o` 开放帧，随后发送 STOMP `CONNECT`：
 
 ```text
-CONNECT\naccept-version:1.1,1.0\nheart-beat:0,0\n\n\\0
+CONNECT\naccept-version:1.1,1.0\nheart-beat:0,0\n\n\u0000
 ```
 
-只有收到 STOMP `CONNECTED` 后才发送业务 `SEND` 帧。业务请求按响应类型串行关联；取消已发送的请求会关闭并重建连接，以避免服务端迟到响应关联到下一次同类型请求。
+- 收到 `CONNECTED` 后才发送业务 `SEND` 帧。
+- 业务响应由 SockJS `a["TYPE\\n...\\n\\n{json}"]` 包装，封装层按响应类型串行关联请求。
+- 请求超时 15 秒；取消请求会关闭并重建连接，避免迟到响应串到下一次同类型请求。
 
-| 页面能力 | STOMP destination | 请求参数重点 | 响应类型 |
+## 3. 业务 Destination
+
+| 能力 | Destination | 关键参数 | 响应类型 |
 | --- | --- | --- | --- |
-| 搜索歌单 | `/music/searchsonglist` | `name`、`source=wy`、`pageIndex`、`pageSize` | `SEARCH_SONGLIST` |
-| 搜索用户 | `/music/searchuser` | `nickname`、`source=wy`、`pageIndex`、`pageSize` | `SEARCH_USER` |
-| 获取用户歌单 | `/music/searchsonglist` | `name=用户 ID`、`source=wy_user` | `SEARCH_SONGLIST` |
-| 获取歌单歌曲 | `/music/search` | `name=*歌单 ID`、`source=wy` | `SEARCH` |
+| 网易云歌曲搜索 | `/music/search` | `name`、`source=wy`、`pageIndex`、`pageSize` | `SEARCH` |
+| QQ 歌曲搜索 | `/music/search` | `name`、`source=qq`、`pageIndex`、`pageSize` | `SEARCH` |
+| 网易电台搜索 | `/music/search` | `name`、`source=wydt`、`pageIndex`、`pageSize` | `SEARCH` |
+| 网易云歌单歌曲 | `/music/search` | `name=*歌单 ID`、`source=wy` | `SEARCH` |
+| QQ 歌单歌曲 | `/music/search` | `name=*dissid`、`source=qq` | `SEARCH` |
+| 搜索歌单 | `/music/searchsonglist` | `name`、`source=wy/qq`、分页 | `SEARCH_SONGLIST` |
+| 搜索用户 | `/music/searchuser` | `nickname`、`source=wy`、分页 | `SEARCH_USER` |
+| 用户公开歌单 | `/music/searchsonglist` | `name=用户 ID`、`source=wy_user` | `SEARCH_SONGLIST` |
+| QQ 用户歌单 | `/music/searchsonglist` | `name=QQ 号`、`source=qq_user` | `SEARCH_SONGLIST` |
+| 点歌 / 获取播放地址 | `/music/pick` | `id`、`name`、`artist`、`duration`、`source=wy/qq/wydt`、`quality=320k` | `PICK` |
 
-服务使用 SockJS 包装消息，例如 `a["TYPE\\n...\\n\\n{json}"]`。分页数据位于响应的 `data.data`，总数位于 `data.totalSize`。封装层会把原始字段转换为小程序统一的歌单、用户和歌曲结构，小程序不直接请求网易云接口。
+分页数据位于响应的 `data.data`，总数位于 `data.totalSize`。
 
+## 4. 搜索结果结构
 
-`song`、`playlist`、`artist`、`search` 通常返回 JSON 数组。搜索结果示例：
-
-```json
-[
-  {
-    "title": "晴天",
-    "author": "周杰伦",
-    "pic": "https://p1.music.126.net/example.jpg",
-    "url": "https://meting.mikus.ink/api?server=netease&type=url&id=186016",
-    "lrc": "https://meting.mikus.ink/api?server=netease&type=lrc&id=186016"
-  }
-]
-```
-
-字段含义：
-
-| 字段 | 说明 |
-| --- | --- |
-| `title` | 歌曲名称 |
-| `author` | 歌手名称 |
-| `pic` | 封面地址 |
-| `url` | 播放地址接口地址 |
-| `lrc` | 歌词接口地址 |
-
-`url` 和 `lrc` 结果中的歌曲 ID 是项目使用的媒体 ID。Meting-API 的搜索结果本身没有单独的 `id` 字段，云函数从这两个接口地址的 `id` 参数中提取媒体 ID。
-
-`type=url` 的响应可能是纯文本播放地址，也可能通过 HTTP 302 重定向到音频地址。小程序先把接口地址提交给 `musicApp` 云函数，由云函数解析重定向并返回 HTTPS 音频地址，再交给微信背景音频播放器。
-
-`type=pic` 通常通过 HTTP 302 重定向到图片地址。
-
-`type=lrc` 返回纯文本歌词，包含类似以下格式的时间标签：
-
-```text
-[00:28.950]故事的小黄花
-```
-
-云函数会把歌词文本转换成小程序现有播放器使用的结构：
+`SEARCH` 只提供元数据，典型字段：
 
 ```json
-[
-  {
-    "time": 28.95,
-    "lineLyric": "故事的小黄花"
-  }
-]
+{
+  "id": "186016",
+  "name": "晴天",
+  "artist": "周杰伦",
+  "album": { "name": "叶惠美", "picture_url": "" },
+  "duration": 269000,
+  "picture_url": ""
+}
 ```
 
-## 5. 项目接口映射
-
-小程序的普通歌曲搜索仍调用 `musicApp` 云函数；网易云歌单、用户、用户歌单和歌单歌曲详情，以及 QQ 歌单、QQ 用户歌单和 QQ 歌单歌曲，使用 `jusicWsApi.js` 的 WebSocket 通道，不直接请求 Meting-API：
-
-| 小程序能力 | 服务 | 用途 |
-| --- | --- | --- |
-| `song/search` | `musicApp` 云函数 → 对应平台 Meting-API `type=search` | 普通歌曲搜索（含网易云电台节目） |
-| `song/getLrc` | `musicApp` 云函数 → Meting-API `type=lrc` | 网易云歌词；QQ 与电台歌曲返回空歌词 |
-| `song/getUrl`（网易/酷狗） | `musicApp` 云函数 → Meting-API `type=url` 或详情接口 | 解析实际播放地址 |
-| `song/getUrl`（QQ） | 云函数优先返回点播下发的直链；失效时回退 `meting.mikus.ink` `type=song` | QQ 播放地址解析 |
-| 网易云歌单、用户及详情 | `jusicWsApi.js` → jusic-serve STOMP destination | 搜索资源和获取歌单歌曲 |
-| QQ 歌单、用户歌单及详情 | `jusicWsApi.js` → jusic-serve STOMP destination | 搜索资源和获取 QQ 歌单歌曲 |
-| 歌曲封面 | WS 或搜索结果中的封面字段 | 显示封面 |
-
-### QQ 播放地址解析
-
-QQ 搜索（`SEARCH`）只返回元数据，不带播放地址。点歌或播放时客户端先向 jusic-serve 的 `/music/pick` 发起点播，服务端在 `PICK` 帧中回传带签名的直链：
-
-1. `jusicWsApi.pickQQSong(song)` 发送 `{ id: songmid, name, artist, duration, source: 'qq' }`。
-2. 在 `PICK` 帧的 `data` 数组里按 `id` 匹配当前歌曲，取其 `url`（HTTP 自动升级为 HTTPS）并随歌曲一起入队。
-3. 播放时云函数 `song/getUrl` 直接返回该直链（省去额外探测）；直链缺失时才回退 `resolveTencentMusicUrl` 调用 `meting.mikus.ink` 的 `type=song` 详情接口。直链签名过期时由播放器错误回调触发自动切歌。
-
-`validateSong` 对 tencent 来源保留点播下发的直链，拒绝 Meting 接口地址；直链缺失时仍存为空字符串，按 `songmid` 兜底解析。
-
-`type=song` 详情接口免鉴权且返回带签名的 `url`/`lrc` 地址，云函数对详情结果做 3 分钟短时缓存（`musicDetailCache`）避免重复请求；歌词解析同样复用该详情地址。
-
-内部歌曲结构：
+封装层转换为项目统一歌曲结构：
 
 ```json
 {
   "source": "netease",
-  "mid": "5257138",
-  "name": "屋顶",
-  "singer": "周杰伦 / 温岚 / 吴宗宪",
-  "album": "男女情歌对唱冠军全记录",
+  "mid": "186016",
+  "name": "晴天",
+  "singer": "周杰伦",
+  "album": "叶惠美",
   "pic": "https://p1.music.126.net/example.jpg",
-  "url": "https://meting.mikus.ink/api?server=netease&type=url&id=5257138",
-  "lrc": "https://meting.mikus.ink/api?server=netease&type=lrc&id=5257138"
+  "url": "",
+  "lrc": [],
+  "duration": 269000
 }
 ```
 
-歌单详情页拿到的歌曲对象会直接交给现有的点歌、收藏和播放菜单；播放地址仍由 `musicApp` 云函数解析为最终 HTTPS 音频地址。
+网易云 `SEARCH` 的 `picture_url` 和 `album.picture_url` 经常为空，QQ 搜索通常返回 `https://y.gtimg.cn/...` 封面。缺少封面时由客户端批量调用云函数 `song/getCovers`。
 
-## 6. 自动补歌
+### 封面补全
 
-播放队列不足时（目标数量 1~5 首，默认 3 首），云函数 `refillQueue` 并行准备三个来源的可播放候选（正常模式）：
+```text
+POST musicApp { action: "song/getCovers", payload: { mids: ["186016", ...] } }
+→ 云函数请求 https://music.163.com/api/song/detail?ids=[...]
+→ 读取 songs[].album.picUrl，返回 { "186016": "https://p1.music.126.net/..." }
+```
 
-1. 当前用户「我的歌曲」收藏（`playlists` 中未标 `children` 的记录，最多取 100 条候选）；与收藏页「我的歌曲 / 儿歌」互斥分类一致，已标为儿歌的收藏不参与正常模式补歌。
-2. 房间缓存的备用歌曲（`rooms.backup_songs`，最多缓存 10 首）。
-3. 房间 `search_prompts` 随机提示词的网易云搜索结果。
+- 单次最多 30 个 `mid`，由客户端自动分批。
+- 搜索结果、歌单详情、收藏列表和播放队列都会在渲染后补全缺失封面。
+- 网易云官方详情结果缓存 24 小时；查不到封面的歌曲短时缓存 10 分钟，避免重复请求。
+- 接口失败时返回空对象，页面继续使用本地占位图。
 
-三个来源按权重 `REFILL_SOURCE_WEIGHTS`（favorite:cache:prompt = 5:3:2）随机混入队列，单一来源不再独占补歌；某来源为空时权重自动让渡给其余来源。收藏候选按收藏页「我的歌曲 / 儿歌」互斥分类取值：正常模式排除已标为儿歌的收藏，儿歌模式只取已标为儿歌的收藏。候选歌曲先经 `filterPlayableSongs` 验证播放地址可解析（1.2 秒超时）才入队；入队项带 `auto_added: true` 和 `backup_source`（favorite/cache/prompt/children）标记。为避免反复补入同一批歌曲：收藏、缓存和提示词搜索候选均随机打乱后取样，且补歌会排除 `rooms.recent_played` 中记录的最近 20 首已播歌曲（歌曲成为当前播放时写入）。提示词搜索成功时同步刷新 `backup_songs` 缓存。补歌过程通过 `refill_lock_until`（15 秒锁）和 `refill_lock_token` 防止并发重复补充，并可通过定时触发器 `refillPlaybackQueue` 周期性执行。队列排空时房间进入 `auto_refill_paused` 状态，下次补歌或切歌时恢复。
+## 5. 播放地址与点歌
 
-### 儿歌模式（一键儿歌）
+搜索结果不带播放地址。点歌、收藏后播放或切换当前歌曲时，客户端先调用 `ensurePlayableSong`：
 
-任意登录用户调用 `room/setChildrenMode`（`enabled: true`）开启：房间 `children_mode` 置位 → 待播队列清空 → 立即播放一首儿歌，优先取用户「儿歌」收藏；没有可用收藏时回退到聚合关键词池 `CHILDREN_AGGREGATE_KEYWORDS`（儿歌、儿歌多多、贝乐虎儿歌、宝宝巴士儿歌等 14 个，搜索返回整批儿歌合集）随机抽词搜索网易云取第一首。两条来源都不做播放地址预验证。此后 `refillQueue` 检测到 `children_mode` 时跳过正常模式三来源，候选来自两个来源：用户「儿歌」收藏（`playlists` 中 `children: true` 的记录）与云端儿歌关键词搜索（每次抽 1 个聚合词 + 2 个具体歌名词，`CHILDREN_SONG_KEYWORDS` 65 个，并行搜索汇总，纯随机无记忆），两者按权重 `CHILDREN_REFILL_WEIGHTS`（favorite:children = 3:2）随机混入。儿歌模式下不排除 `recent_played` 已播歌曲（儿歌适合重复收听），仅排除当前队列内已有的歌。关闭时复位 `children_mode` 并清空待播队列（与开启行为对称），当前歌曲播完后由正常模式三来源重新补歌。儿歌模式下手动点歌不受限制，自动补入项的 `backup_source` 为 `children`（词池）或 `favorite`（儿歌收藏），点歌人显示为「儿歌电台」或「收藏歌曲」。
+1. 若歌曲已有合法 HTTPS 直链（非 Meting 接口地址），直接复用。
+2. 否则发送 `/music/pick`，服务端在 `PICK` 帧中返回队列快照。
+3. 在 `PICK` 的 `data[]` 中按歌曲 `id` 匹配，取 `url` 字段。
+4. 直链中的字面量 `\u0026` 还原为 `&`，`http://` 自动升级为 `https://`。
+5. 获取成功的歌曲连同直链一起入队；歌单/搜索结果本身不写入直链。
 
-## 7. 管理能力
+直链带签名，可能过期。播放器触发 `onError` 时：
 
-Meting-API 服务本身还提供管理后台和服务端管理能力，包括：
+- 先重新 `/music/pick` 一次并重试播放；
+- 仍失败则调用 `song/autoPass` 自动切歌。
 
-- 网易云音乐和 QQ 音乐 Cookie 管理。
-- VIP 播放能力检测。
-- QQ 音乐 Cookie 自动刷新。
-- Cookie 定时监测。
-- Gotify、企业微信、钉钉和飞书 Webhook 通知。
-- 后台用户、角色和操作日志管理。
-- 登录失败锁定。
-- TOTP 双因素认证。
-- 管理后台路径配置。
+`validateSong` 会丢弃历史数据中的 Meting 接口地址，只保留可用的音频直链，避免把失效地址交给播放器。
 
-这些管理功能不由小程序调用。小程序只使用基础音乐数据接口，不保存或传递音乐平台 Cookie、后台账号、后台 Token 或 2FA 秘钥。
+## 6. 歌词
 
-## 8. 部署和地区限制
+网易云歌词由 `musicApp` 云函数请求：
 
-服务支持 Node.js、Docker、Vercel 和 Cloudflare Workers 等部署方式。Vercel 和 Cloudflare Workers 主要提供基础 API，不支持依赖文件系统的管理后台功能。
+```text
+https://music.163.com/api/song/lyric?id={mid}&lv=1&kv=1&tv=-1
+```
 
-QQ 音乐接口受服务部署地区和音乐版权限制影响，项目当前默认使用网易云音乐。正式环境应验证目标用户所在地区、歌曲版权状态、音频 URL 有效期和小程序播放器兼容性。
+- 请求带浏览器 User-Agent 和 `Referer: https://music.163.com/`。
+- 解析 `lrc.lyric` 文本，转换为 `{ time, lineLyric }` 数组。
+- 结果缓存 30 分钟，超时 2 秒；失败时返回空数组。
+- `song/getLrc` 对 QQ、电台和酷狗来源直接返回空歌词。
 
-## 9. 安全与合规注意事项
+客户端只在播放网易云歌曲时请求歌词；QQ、电台歌曲不发起歌词请求。
 
-- 不在小程序客户端保存音乐平台 Cookie。
-- 不把 Meting-API 管理后台凭据写入仓库或云函数响应。
-- 不把管理 API 暴露给小程序用户。
-- 云函数对搜索词、歌曲 ID 和返回数据进行长度、类型和协议校验。
-- 音乐资源的可用性和版权由第三方服务及其上游平台决定。
-- 生产环境应设置 API 访问监控、错误告警和必要的请求频率限制。
+## 7. 自动补歌
 
-## 10. 当前限制
+播放队列不足时：
 
-- `song/search` 按页面选择的平台搜索歌曲，支持 `netease`、`tencent` 和 `wydt`；酷狗入口已从搜歌页隐藏（公共 Meting 实例酷狗 `type=url` 全部失效）。当前没有备用回退接口，主接口失败直接报错。
-- QQ 歌单和 QQ 用户歌单歌曲通过 jusic-serve 返回 QQ `songmid`、歌曲名称、歌手、专辑、封面和时长，不在小程序侧拼接 Meting 地址。播放时由云函数按 `songmid` 调用 Meting 详情接口动态解析；如果 QQ 返回的歌曲需要登录、购买或受地区版权限制，云函数会返回“歌曲播放资源不可用”，不会把无效地址交给播放器。
-- `wydt` 电台节目必须在搜索结果中自带可播放 `url`，缺少播放地址的歌曲会被 `validateSong` 拒绝；电台节目不参与歌词解析，也不会进入自动补歌候选。
-- `song/getUrl` 仅在播放资源明确失效（HTTP 401/403/404/500 或重定向到 404 页）时重新解析地址，网络错误和超时不触发重解析。
-- 酷狗接口保留在云函数中，但公共 Meting 实例的 `type=url` 已全部失效，搜歌页因此隐藏了酷狗入口；恢复前需要自建实例并配置有效的酷狗 Cookie/token，酷狗封面可能返回 HTTP 500，云函数不持久化酷狗封面地址。
-- Meting-API 的 `song`、`playlist` 和 `artist` 是通用数据类型；小程序的网易云歌单和用户资源页面使用 jusic-serve WebSocket，不直接调用这些 Meting-API action。
-- 播放地址可能因版权、Cookie、地区或临时 URL 失效。
-- `pic` 搜索结果可能返回 HTTP 地址，云函数会将其转换为 HTTPS；若上游不支持 HTTPS，封面仍可能加载失败。
-- 服务返回内容可能随上游平台调整，云函数保留适配和错误转换层。
+1. 客户端通过 WS 搜索候选：
+   - 正常模式：从房间 `search_prompts` 随机抽 1 个词搜索网易云，候选标记 `prompt`。
+   - 儿歌模式：随机抽 1 个聚合词 + 2 个具体歌名词并行搜索，候选标记 `children`。
+2. 客户端调用 `song/refill`，携带 `candidates` 数组。
+3. 云函数同时准备：
+   - 用户「我的歌曲」收藏（正常模式）或「儿歌」收藏（儿歌模式）。
+   - 房间 `backup_songs` 缓存（仅正常模式）。
+4. 正常模式按 `favorite:cache:prompt = 5:3:2`、儿歌模式按 `favorite:children = 3:2` 加权混入队列。
+5. 入队项带 `auto_added: true` 和 `backup_source`，播放时再通过 WS 点播获取直链。
 
-## 11. 参考资料
+定时触发器 `refillPlaybackQueue` 没有客户端参与，只使用收藏与缓存来源。
 
-- 官方站点：https://meting.mikus.ink/
-- API 入口：https://meting.mikus.ink/api
-- GitHub：https://github.com/mikus-loli/Meting-API
-- MetingJS：https://github.com/xizeyoupan/MetingJS
+## 8. 部署与域名
+
+微信公众平台需要配置：
+
+- request 合法域名：`https://xin.hanxin.vip`
+- socket 合法域名：`wss://xin.hanxin.vip`
+
+网易云歌词接口由云函数请求，不需要加入小程序域名白名单。
+
+云函数 `musicApp` 的歌词请求超时为 2 秒；默认 3 秒的云函数超时设置可直接运行。
+
+## 9. 当前限制
+
+- 酷狗入口已隐藏，历史收藏和队列中的酷狗歌曲无法重新获取播放地址。
+- QQ 音乐播放依赖 `/music/pick`；需要登录、购买或受地区版权限制的歌曲可能无法获取直链。
+- 电台歌曲支持搜索、点歌和播放，但不提供歌词，也不进入自动补歌候选。
+- 歌词仅覆盖网易云；歌词接口不可用时页面显示暂无歌词。
+- 播放直链带时效，失效后依赖播放器错误回调重新点播或自动切歌。
+- 服务端搜索能力依赖 jusic-serve 可用性；接口异常时搜索和点歌会提示失败。
+
+## 10. 参考资料
+
+- 服务站点：https://xin.hanxin.vip/
+- SockJS 协议：https://github.com/sockjs/sockjs-protocol
+- STOMP 协议：https://stomp.github.io/

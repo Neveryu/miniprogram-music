@@ -114,6 +114,17 @@ page {
     color: #ccc !important;
   }
 
+  /* 链接卡片与语音消息同样是浅色气泡，深色模式下统一改为深色 */
+  .bbbug_history .bbbug_item .bbbug_content .bbbug_link,
+  .bbbug_history .bbbug_item .bbbug_content .bbbug_voice {
+    background-color: #333 !important;
+    color: #ccc !important;
+  }
+
+  .bbbug_history .bbbug_item .bbbug_content .bbbug_link .bbbug_link_title {
+    color: #ccc !important;
+  }
+
   .searchbox,
   .weui-panel,
   .weui-cells,

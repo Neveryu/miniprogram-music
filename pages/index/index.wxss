@@ -90,6 +90,26 @@ movable-view image {
   padding-top: 50px;
 }
 
+.bbbug_player_empty {
+  padding-top: 38px;
+  text-align: center;
+}
+
+.bbbug_player_empty .bbbug_player_tips {
+  padding-top: 0;
+}
+
+.bbbug_player_empty-action {
+  display: inline-block;
+  margin-top: 12px;
+  padding: 6px 18px;
+  border-radius: 999px;
+  background: #ff8a65;
+  color: #ffffff;
+  font-size: 13px;
+  line-height: 18px;
+}
+
 .bbbug_player_outer {
   position: absolute;
   left: 10px;
