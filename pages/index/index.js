@@ -276,6 +276,19 @@ Page({
     })
     this.getMyInfo()
   },
+  // 退出儿歌模式返回首页后，按正常模式重新补歌并恢复播放
+  onShow() {
+    if (!app.globalData.needRefillAfterChildrenExit) {
+      return
+    }
+    app.globalData.needRefillAfterChildrenExit = false
+    if (this.data.roomInfo && this.data.roomInfo.children_mode) {
+      const roomInfo = { ...this.data.roomInfo, children_mode: false }
+      this.setData({ roomInfo })
+      app.globalData.roomInfo = roomInfo
+    }
+    this.refillPlaybackQueue()
+  },
   setSimplePlayer() {
     wx.vibrateShort()
     this.setData({

@@ -991,10 +991,13 @@ const setChildrenMode = async (payload, user) => {
       await db.collection('rooms').doc(room._id).update({
         data: {
           children_mode: false,
+          // 退出时停止当前儿歌，交给正常模式重新补歌并恢复播放
+          current_song: _.set(null),
+          auto_refill_paused: false,
           updated_at: db.serverDate()
         }
       })
-      // 退出时清空待播队列（与开启行为对称），当前歌曲播完后由正常模式三来源重新补歌
+      // 退出时清空待播队列（与开启行为对称），回到首页后由正常模式三来源重新补歌
       await db.collection('play_queue').where({ room_id: DEFAULT_ROOM_ID }).remove()
     }
     return success({ children_mode: false }, '儿歌模式已关闭')

@@ -233,13 +233,16 @@ Component({
             toggling: false
           })
           wx.showToast({ title: res.msg || '操作成功', icon: 'none' })
-          if (next) {
+          if (next && !hasSong) {
             // 没有儿歌收藏时，云函数无法搜索，由客户端通过 WS 搜一首并播放
-            if (!hasSong) {
-              this.playFirstChildrenSong()
-            }
-            setTimeout(() => wx.navigateBack(), 800)
+            this.playFirstChildrenSong()
           }
+          if (!next) {
+            // 通知首页在返回后按正常模式重新补歌
+            app.globalData.needRefillAfterChildrenExit = true
+          }
+          // 开启和关闭都回到首页，保持交互一致
+          setTimeout(() => wx.navigateBack(), 800)
         },
         error: (response) => {
           this.setData({ toggling: false })
