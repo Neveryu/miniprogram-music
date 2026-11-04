@@ -11,7 +11,7 @@ module.exports.getStaticUrl = function (url) {
   return url;
 };
 module.exports.getImageWidth = function (url) {
-  if (url.indexOf('images/emoji/') >= 0) {
+  if (url.indexOf('/res/Emojis/') >= 0) {
     return 60;
   } else {
     return 160;

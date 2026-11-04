@@ -13,7 +13,7 @@
 | 网易云封面 | 网易云官方歌曲详情接口 | `song/getCovers` 批量补全搜索/收藏/队列中缺失的封面，命中后缓存 24 小时 |
 | 网易云歌词 | 网易云官方歌词接口 | `musicApp` 云函数请求 `https://music.163.com/api/song/lyric`，并做 30 分钟缓存 |
 
-搜索接口不返回 `url` 和 `lyric`；播放地址统一由点播帧下发。QQ 音乐与电台歌曲不提供歌词。
+搜索接口不返回 `url` 和 `lyric`；播放地址统一由点播帧下发。QQ 音乐、电台和酷狗歌曲不提供歌词。
 
 服务项目地址：
 
@@ -120,7 +120,7 @@ POST musicApp { action: "song/getCovers", payload: { mids: ["186016", ...] } }
 - 先重新 `/music/pick` 一次并重试播放；
 - 仍失败则调用 `song/autoPass` 自动切歌。
 
-`validateSong` 会丢弃历史数据中的 Meting 接口地址，只保留可用的音频直链，避免把失效地址交给播放器。
+`validateSong` 会丢弃历史数据中的 Meting 接口地址，只保留可用的音频直链，避免把失效地址交给播放器。云函数只接受已知音乐 CDN 域名（`music.126.net`、`qqmusic.qq.com`、`gtimg.cn`、`qq.com` 等）的 HTTPS 直链，客户端伪造的任意外部音频地址会被清空。
 
 ## 6. 歌词
 
@@ -135,23 +135,25 @@ https://music.163.com/api/song/lyric?id={mid}&lv=1&kv=1&tv=-1
 - 结果缓存 30 分钟，超时 2 秒；失败时返回空数组。
 - `song/getLrc` 对 QQ、电台和酷狗来源直接返回空歌词。
 
-客户端只在播放网易云歌曲时请求歌词；QQ、电台歌曲不发起歌词请求。
+客户端只在播放网易云歌曲时请求歌词；QQ、电台和酷狗歌曲不发起歌词请求。
 
 ## 7. 自动补歌
 
 播放队列不足时：
 
-1. 客户端通过 WS 搜索候选：
+1. 客户端先调用 `song/songList` 确认队列不足 3 首或没有当前歌曲，避免队列充足时仍发起 WS 搜索。
+2. 客户端通过 WS 搜索候选：
    - 正常模式：从房间 `search_prompts` 随机抽 1 个词搜索网易云，候选标记 `prompt`。
    - 儿歌模式：随机抽 1 个聚合词 + 2 个具体歌名词并行搜索，候选标记 `children`。
-2. 客户端调用 `song/refill`，携带 `candidates` 数组。
-3. 云函数同时准备：
+3. 客户端调用 `song/refill`，携带 `candidates` 数组。
+4. 云函数同时准备：
    - 用户「我的歌曲」收藏（正常模式）或「儿歌」收藏（儿歌模式）。
    - 房间 `backup_songs` 缓存（仅正常模式）。
-4. 正常模式按 `favorite:cache:prompt = 5:3:2`、儿歌模式按 `favorite:children = 3:2` 加权混入队列。
-5. 入队项带 `auto_added: true` 和 `backup_source`，播放时再通过 WS 点播获取直链。
+5. 收藏和缓存候选只保留 `netease` / `tencent`，排除 `kugou`、`wydt`。
+6. 正常模式按 `favorite:cache:prompt = 5:3:2`、儿歌模式按 `favorite:children = 3:2` 加权混入队列。
+7. 入队项带 `auto_added: true` 和 `backup_source`，播放时再通过 WS 点播获取直链；队列硬上限 100 首。
 
-定时触发器 `refillPlaybackQueue` 没有客户端参与，只使用收藏与缓存来源。
+定时触发器 `refillPlaybackQueue` 没有客户端参与，正常模式只用收藏与缓存，儿歌模式只用儿歌收藏。
 
 ## 8. 部署与域名
 
@@ -162,7 +164,7 @@ https://music.163.com/api/song/lyric?id={mid}&lv=1&kv=1&tv=-1
 
 网易云歌词接口由云函数请求，不需要加入小程序域名白名单。
 
-云函数 `musicApp` 的歌词请求超时为 2 秒；默认 3 秒的云函数超时设置可直接运行。
+云函数 `musicApp` 的歌词请求超时为 2 秒；`config.json` 已将云函数超时设置为 20 秒，为封面批量查询留出余量。
 
 ## 9. 当前限制
 

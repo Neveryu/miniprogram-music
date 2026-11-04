@@ -89,6 +89,18 @@ Component({
         clearInterval(this.clockTimer)
         this.clockTimer = null
       }
+      if (this.carResetTimer) {
+        clearTimeout(this.carResetTimer)
+        this.carResetTimer = null
+      }
+      if (this.passToastTimer) {
+        clearTimeout(this.passToastTimer)
+        this.passToastTimer = null
+      }
+      if (this.favBurstTimer) {
+        clearTimeout(this.favBurstTimer)
+        this.favBurstTimer = null
+      }
     },
     // 上滑切歌手势：页面不动，小车向前顶进（透视缩小）模拟前行
     onTouchStart(e) {
@@ -104,22 +116,27 @@ Component({
       }
       const dx = e.touches[0].clientX - this.touchStartX
       const dy = e.touches[0].clientY - this.touchStartY
-      // 横向滑动不参与
-      if (Math.abs(dx) > 60) {
+      // 横向滑动或回拖视为取消，必须重置进度，避免松手仍然切歌
+      if (Math.abs(dx) > 60 || dy >= -10) {
+        if (this.data.passReady || this.data.dragOffset > 0) {
+          this.setData({
+            dragOffset: 0,
+            passReady: false
+          })
+        }
         return
       }
-      if (dy < -10) {
-        // 上滑进度 0 ~ 1，小车据此向远处推进
-        const progress = Math.min(1, -dy / 90)
-        const ready = progress >= 0.78
-        this.setData({
-          dragOffset: progress,
-          passReady: ready
-        })
-        // 首次到达阈值，震动提示
-        if (ready && !this.data.passReady) {
-          wx.vibrateShort({ type: 'light' })
-        }
+      // 上滑进度 0 ~ 1，小车据此向远处推进
+      const progress = Math.min(1, -dy / 90)
+      const ready = progress >= 0.78
+      const wasReady = this.data.passReady
+      this.setData({
+        dragOffset: progress,
+        passReady: ready
+      })
+      // 首次到达阈值，震动提示
+      if (ready && !wasReady) {
+        wx.vibrateShort({ type: 'light' })
       }
     },
     onTouchEnd(e) {

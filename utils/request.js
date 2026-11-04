@@ -1,16 +1,9 @@
 const cloudConfig = require('../config/cloud.js')
 
-let config = {
-  apiUrl: '',
-  cdnUrl: '',
-  baseData: {},
+const config = {
   code: {
     success: 200,
-    login: 401,
-    updateForce: 301,
-    update: 302,
-    hide: 503,
-    error: 500
+    login: 401
   }
 }
 
@@ -109,5 +102,4 @@ const request = (data = {}) => {
   })
 }
 
-export { config }
-exports.request = request
+module.exports = { request }

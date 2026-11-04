@@ -174,8 +174,8 @@ Component({
     showMenu(e) {
       let song = e.mark.item
       let menu = ['点歌', '移除']
-      if (app.globalData.roomInfo && app.globalData.userInfo && app.globalData.roomInfo.room_type == 4 && app.globalData.roomInfo.room_user == app.globalData.userInfo.user_id) {
-        menu = ['播放', '移除']
+      if (app.globalData.roomInfo && app.globalData.userInfo && app.globalData.roomInfo.room_user == app.globalData.userInfo.user_id) {
+        menu = ['播放', '点歌', '移除']
       }
       wx.showActionSheet({
         itemList: menu,

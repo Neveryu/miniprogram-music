@@ -7,8 +7,6 @@ for (let i = 1; i <= 30; i++) {
 export default {
   historyMax: 20,
   placeholderDefault: '说点什么吧...',
-  placeholderSearchImage: '关键词搜索表情',
-  messageButtonTitleSearch: 'search',
   messageButtonTitleSend: 'send',
   emojiList
 }

@@ -71,7 +71,11 @@ Component({
         })
       }).catch(error => {
         if (requestId !== this._playlistRequestId || (error && error.code === 'JUSIC_REQUEST_CANCELLED')) return
-        this.setData({ hasLoaded: true })
+        // 翻页失败时回退页码，避免下一次触底跳过失败页
+        this.setData({
+          hasLoaded: true,
+          page: page > 1 ? page - 1 : page
+        })
         wx.showToast({ title: error.message || '歌单加载失败，请重试', icon: 'none' })
       }).then(() => {
         if (requestId === this._playlistRequestId) {

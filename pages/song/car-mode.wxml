@@ -129,7 +129,7 @@
       </view>
       <view class="car-mode-tips-inline">
         <view class="tips-dot"></view>
-        <text class="tips-inline-text">点击爱心收藏 · 上滑切歌 · 消息自动朗读</text>
+        <text class="tips-inline-text">点击爱心收藏 · 上滑切歌</text>
       </view>
     </view>
     <view class="car-lrc-window">

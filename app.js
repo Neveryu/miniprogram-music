@@ -2,21 +2,31 @@ const { request } = require('./utils/request.js')
 const cloudConfig = require('./config/cloud.js')
 import { checkMiniprogramVersion } from './utils/core.js'
 const USER_INFO_KEY = 'music_user_info'
+// 云存储临时地址有效期通常为 2 小时，本地缓存 1 小时后主动刷新
+const CLOUD_FILE_URL_TTL = 60 * 60 * 1000
 App({
   globalData: {
-    systemVersion: 0,
-    user_changed: false,
-    cloudReady: false,
+    // 入口校验令牌：每次冷启动生成一次性随机值，站内导航通过 ?bbbug= 携带、
+    // 各子页面 onLoad 校验，防止页面被外部分享/扫码直接打开而无上下文进入。
+    systemVersion: String(Date.now()),
     roomInfo: null,
     userInfo: null,
-    atUserInfo: false,
   },
   systemInfo: null,
   cloudFileUrlCache: {},
+  cloudFileUrlExpireAt: {},
   loginListeners: [],
   request,
   resolveCloudFileUrls(fileIds) {
     const sources = [...new Set((fileIds || []).filter((fileId) => /^cloud:\/\//i.test(fileId)))]
+    const now = Date.now()
+    Object.keys(this.cloudFileUrlExpireAt).forEach((fileId) => {
+      if (now < this.cloudFileUrlExpireAt[fileId]) {
+        return
+      }
+      delete this.cloudFileUrlCache[fileId]
+      delete this.cloudFileUrlExpireAt[fileId]
+    })
     const pending = sources.filter((fileId) => !this.cloudFileUrlCache[fileId])
     if (!pending.length) {
       return Promise.resolve(this.cloudFileUrlCache)
@@ -26,22 +36,18 @@ App({
       batches.push(pending.slice(index, index + 50))
     }
     return Promise.all(batches.map((fileList) => wx.cloud.getTempFileURL({ fileList }))).then((results) => {
+      const updatedAt = Date.now()
       results.forEach((result) => {
         const files = result.fileList || []
         files.forEach((file) => {
           if (file.status === 0 && file.tempFileURL) {
             this.cloudFileUrlCache[file.fileID] = file.tempFileURL
+            this.cloudFileUrlExpireAt[file.fileID] = updatedAt + CLOUD_FILE_URL_TTL
           }
         })
       })
       return this.cloudFileUrlCache
     })
-  },
-  resolveCloudFileUrl(fileId) {
-    if (!/^cloud:\/\//i.test(fileId || '')) {
-      return Promise.resolve(fileId || '')
-    }
-    return this.resolveCloudFileUrls([fileId]).then((urls) => urls[fileId] || '')
   },
   onLaunch() {
     checkMiniprogramVersion()
@@ -59,7 +65,6 @@ App({
       env: cloudConfig.env,
       traceUser: true
     })
-    this.globalData.cloudReady = true
   },
   readStoredUserInfo() {
     try {
@@ -97,18 +102,12 @@ App({
   },
   notifyLogin(userInfo) {
     this.saveUserInfo(userInfo)
-    this.globalData.user_changed = true
     this.loginListeners.slice().forEach((callback) => {
       try {
         callback(this.globalData.userInfo)
       } catch (error) {
         console.error('[LoginListener]', error)
       }
-    })
-  },
-  showLogin: function () {
-    wx.navigateTo({
-      url: '../user/login?bbbug=' + this.globalData.systemVersion
     })
   }
 })

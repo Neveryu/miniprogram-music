@@ -1,15 +1,11 @@
 <!-- 底部菜单栏 -->
-<view class="bbbug_input" bindtap="footerTapedToFocus" wx:if="{{!isCarMode}}">
+<view class="bbbug_input" bindtap="footerTapedToFocus">
   <view class="bbbug_voice_toggle" catchtap="toggleVoiceMode">
     <i class="iconfont {{voiceMode?'icon-icon_compile':'icon-icon_voice'}}"></i>
   </view>
   <view class="bbbug_face" catchtap="showOrHideEmojiBox">
     <image src="/res/image/add.png" />
   </view>
-  <!-- <view class="placeholder" wx:if="{{!message}}">{{messagePlaceHolder}}</view> -->
-  <!-- <input type="text" confirm-type="{{messageSendButton}}" confirm-hold="{{messageConfirmHold}}"
-    bindconfirm="sendMessage" focus="{{messageFocus}}" value="{{message}}" bindinput="messageChanged"
-    bindblur="messageBlured" cursor-spacing="15" /> -->
   <input wx:if="{{!voiceMode}}" type="text" confirm-type="{{messageSendButton}}" confirm-hold="{{messageConfirmHold}}"
     bindconfirm="sendMessage" focus="{{messageFocus}}" placeholder="{{messagePlaceHolder}}" value="{{message}}"
     cursor-spacing="15" catchtap="" bindfocus="messageFocused" />
@@ -38,10 +34,6 @@
     <view class="bbbug_panel_icon"><i class="iconfont icon-icon_compile"></i></view>
     <view class="bbbug_panel_title">提示词</view>
   </view>
-  <!-- <view class="bbbug_panel_item" bindtap="mainMenuClicked" mark:title="分享">
-    <view class="bbbug_panel_icon"><i class="iconfont icon-qrcode"></i></view>
-    <view class="bbbug_panel_title">分享</view>
-  </view> -->
   <view class="bbbug_panel_item" bindtap="mainMenuClicked" mark:title="驾驶">
     <view class="bbbug_panel_icon"><i class="iconfont icon-changyongtubiao-xianxingdaochu-zhuanqu-112"></i></view>
     <view class="bbbug_panel_title">驾驶</view>
@@ -54,8 +46,8 @@
 
 <!-- 点击右下脚加号的弹出框 -->
 <view class="bbbug_emoji {{isEmojiBoxShow?'animationSlideIn':'animationSlideOut'}}">
-  <image wx:for="{{imageList}}" wx:key="index" src="{{item}}" mode="widthFix" bindtap="sendEmoji" bindlongpress="previewImage"
+  <image wx:for="{{imageList}}" wx:key="index" src="{{item}}" mode="widthFix" bindtap="sendEmoji"
     mark:url="{{item}}" style="height:{{isSystemEmoji?'auto':'80px'}}"></image>
   <view wx:if="{{imageList.length>0}}" class="bbbug_upload" bindtap="chooseImage">发送图片</view>
-  <view wx:if="{{imageList.length==0}}">请输入表情关键词搜索</view>
+  <view wx:if="{{imageList.length==0}}">暂无可用表情</view>
 </view>

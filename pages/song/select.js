@@ -272,8 +272,8 @@ Component({
       let song = e.mark.item
       const isRadio = song.source === 'wydt'
       let menu = isRadio ? ['点歌'] : ['点歌', '收藏']
-      if (app.globalData.roomInfo && app.globalData.userInfo && app.globalData.roomInfo.room_type == 4 && app.globalData.roomInfo.room_user == app.globalData.userInfo.user_id) {
-        menu = isRadio ? ['播放'] : ['播放', '收藏']
+      if (app.globalData.roomInfo && app.globalData.userInfo && app.globalData.roomInfo.room_user == app.globalData.userInfo.user_id) {
+        menu = isRadio ? ['播放', '点歌'] : ['播放', '点歌', '收藏']
       }
       wx.showActionSheet({
         itemList: menu,

@@ -1,4 +1,22 @@
 {
-  "read": "auth.openid != null",
-  "write": false
+  "rooms": {
+    "read": "auth.openid != null",
+    "write": false
+  },
+  "messages": {
+    "read": "auth.openid != null",
+    "write": false
+  },
+  "users": {
+    "read": false,
+    "write": false
+  },
+  "playlists": {
+    "read": false,
+    "write": false
+  },
+  "play_queue": {
+    "read": false,
+    "write": false
+  }
 }

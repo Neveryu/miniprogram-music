@@ -37,7 +37,6 @@ const requestQueue = []
 let requestPump = null
 let closing = false
 let currentPick = null
-const broadcastHandlers = []
 
 function clearConnectTimer() {
   if (connectTimer) {
@@ -67,10 +66,6 @@ function createCancellationError() {
   error.code = CANCELLATION_CODE
   error.silent = true
   return error
-}
-
-function isCancellationError(error) {
-  return Boolean(error && error.code === CANCELLATION_CODE)
 }
 
 function attachCancellation(promise, cancel) {
@@ -153,6 +148,7 @@ function handleConnectionFailure(task, error) {
   clearConnectTimer()
   resetSocket(task)
   rejectConnection(error)
+  settlePick(null, error)
   failCurrent(error, true)
   closeSocketTask(task, 'connection failure')
   pumpRequests()
@@ -165,6 +161,7 @@ function failTransport(task, error, retryCurrentRequest = false) {
   closing = true
   resetSocket(task)
   rejectConnection(error)
+  settlePick(null, error)
   failCurrent(error, retryCurrentRequest)
   closeSocketTask(task, 'transport failure')
   pumpRequests()
@@ -216,6 +213,7 @@ function ensureConnected() {
         const error = connectionError('WebSocket STOMP 握手超时')
         resetSocket(task)
         rejectConnection(error)
+        settlePick(null, error)
         failCurrent(error)
         closeSocketTask(task, 'connect timeout')
         pumpRequests()
@@ -347,9 +345,6 @@ function handleFrames(raw, task) {
     if (currentPick && type === 'PICK') {
       const pickedSong = findPickedSong(body, currentPick.program, currentPick.source)
       if (pickedSong) settlePick(pickedSong)
-    }
-    for (const handler of broadcastHandlers) {
-      try { handler(type, body) } catch (error) {}
     }
   }
 }
@@ -761,15 +756,6 @@ function settlePick(body, error) {
   else pending.resolve(body)
 }
 
-function onBroadcast(handler) {
-  if (typeof handler !== 'function') return () => {}
-  broadcastHandlers.push(handler)
-  return () => {
-    const index = broadcastHandlers.indexOf(handler)
-    if (index >= 0) broadcastHandlers.splice(index, 1)
-  }
-}
-
 const PICK_SOURCES = { netease: 'wy', tencent: 'qq', wydt: 'wydt' }
 
 /**
@@ -1038,35 +1024,6 @@ function getPlaylistDetail(playlistId, options = {}) {
   })
 }
 
-/** 主动断开连接。通常保持长连接，以便多个搜索页面复用。 */
-function close() {
-  closing = true
-  connectionGeneration += 1
-  clearConnectTimer()
-
-  const error = new Error('WebSocket 连接已关闭')
-  rejectConnection(error)
-  settlePick(null, error)
-  if (currentRequest) {
-    clearTimeout(currentRequest.timer)
-    const pending = currentRequest
-    currentRequest = null
-    pending.settled = true
-    pending.reject(error)
-  }
-  while (requestQueue.length) {
-    const entry = requestQueue.shift()
-    entry.cancelled = true
-    entry.settled = true
-    entry.reject(error)
-  }
-
-  const task = socketTask
-  resetSocket(task)
-  closeSocketTask(task, 'client close')
-  requestPump = null
-}
-
 function base64Encode(value) {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
   let output = ''
@@ -1093,8 +1050,6 @@ module.exports = {
   searchRadioPrograms,
   pickSong,
   ensurePlayableSong,
-  onBroadcast,
   getQQUserPlaylists,
-  getQQPlaylistSongs,
-  close
+  getQQPlaylistSongs
 }

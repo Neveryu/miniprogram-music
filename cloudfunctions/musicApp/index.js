@@ -20,13 +20,18 @@ const AGREEMENT_VERSIONS = ['V1.2']
 const REFILL_SOURCE_WEIGHTS = { favorite: 5, cache: 3, prompt: 2 }
 // 儿歌模式补歌权重：儿歌收藏（用户精选）占主导，云端儿歌词池补充新鲜度
 const CHILDREN_REFILL_WEIGHTS = { favorite: 3, children: 2 }
-// 游客（未登录）可访问的只读接口：浏览房间、消息、队列、歌词
+// 播放队列硬上限，与客户端、查询语句保持一致
+const MAX_QUEUE_SIZE = 100
+// 只接受已知音乐 CDN 的播放直链，避免客户端伪造任意外部音频地址
+const TRUSTED_AUDIO_DOMAINS = ['music.126.net', '126.net', 'music.163.com', '163.com', 'qqmusic.qq.com', 'gtimg.cn', 'qq.com']
+// 游客（未登录）可访问的只读接口：房间、提示词、消息、队列、歌词与封面
 const GUEST_ACTIONS = [
   'room/getRoomInfo',
-  'app/getRealtimeState',
+  'room/getSearchPrompts',
   'message/getMessageList',
   'song/songList',
-  'song/getLrc'
+  'song/getLrc',
+  'song/getCovers'
 ]
 const AUTO_SONG_USER = {
   user_id: 'system',
@@ -48,11 +53,16 @@ const normalizeHttpsUrl = value => String(value || '')
   .replace(/\\u0026/gi, '&')
   .replace(/&amp;/gi, '&')
 
+const isTrustedAudioHost = hostname => {
+  const host = String(hostname || '').toLowerCase()
+  return TRUSTED_AUDIO_DOMAINS.some((domain) => host === domain || host.endsWith(`.${domain}`))
+}
+
 const isUsableAudioUrl = value => {
   try {
     const parsed = new URL(normalizeHttpsUrl(value))
     return parsed.protocol === 'https:'
-      && Boolean(parsed.hostname)
+      && isTrustedAudioHost(parsed.hostname)
       && parsed.pathname
       && parsed.pathname !== '/'
       && !/\/404(?:\/|\?|$)/i.test(parsed.pathname + parsed.search)
@@ -332,17 +342,10 @@ const ensureDefaultRoom = async (user) => {
     room_name: DEFAULT_ROOM_NAME,
     room_notice: '欢迎来到 Music For U！',
     room_user: user._id,
-    room_type: 0,
-    room_public: 1,
-    room_addsong: 0,
-    room_sendmsg: 0,
-    room_playone: 0,
     search_prompts: DEFAULT_SEARCH_PROMPTS,
     backup_songs: [],
     recent_played: [],
     current_song: null,
-    auto_refill_paused: false,
-    refill_status: 'idle',
     refill_lock_until: 0,
     refill_lock_token: '',
     created_at: db.serverDate(),
@@ -381,10 +384,8 @@ const getDefaultRoom = async (user) => {
   }
   if (typeof room.refill_lock_until !== 'number') {
     roomDefaults.refill_lock_until = 0
-    roomDefaults.refill_status = 'idle'
     roomDefaults.refill_lock_token = ''
     room.refill_lock_until = 0
-    room.refill_status = 'idle'
     room.refill_lock_token = ''
   }
   if (Object.keys(roomDefaults).length) {
@@ -414,18 +415,65 @@ const getDefaultRoom = async (user) => {
   return room
 }
 
-const normalizeMessage = (doc) => ({
-  ...doc,
-  message_id: doc._id,
-  message_content: JSON.stringify(doc.payload),
-  message_createtime: doc.created_timestamp
-})
+const normalizeMessage = (doc) => {
+  // _openid 只保留在服务端，不返回给客户端
+  const { _openid, ...rest } = doc || {}
+  return {
+    ...rest,
+    message_id: doc._id,
+    message_content: JSON.stringify(doc.payload),
+    message_createtime: doc.created_timestamp
+  }
+}
+
+// 文本内容安全检测：失败或接口不可用时放行，避免因平台接口异常阻断聊天
+const checkTextSecurity = async (content, openid) => {
+  const security = cloud.openapi && cloud.openapi.security
+  if (!security || typeof security.msgSecCheck !== 'function') {
+    return true
+  }
+  try {
+    const timeout = new Promise((resolve) => setTimeout(() => resolve(null), 3000))
+    const result = await Promise.race([
+      security.msgSecCheck({
+        content,
+        version: 2,
+        scene: 2,
+        openid
+      }),
+      timeout
+    ])
+    if (!result || result.errCode !== 0) {
+      return true
+    }
+    const suggest = result.result && result.result.suggest
+    return !suggest || suggest === 'pass'
+  } catch (error) {
+    console.error('[msgSecCheck]', error)
+    return true
+  }
+}
 
 const sendMessage = async (payload, user) => {
   const type = ['text', 'img', 'voice'].includes(payload.type) ? payload.type : 'text'
   const content = String(payload.msg || '').trim()
-  if (!content || content.length > 1000) {
+  if (!content) {
     return failure('消息内容长度应为 1 到 1000 个字符', 422)
+  }
+  // 文本由客户端 encodeURIComponent 后提交，长度按解码后的原始文本计算
+  let plainContent = content
+  if (type === 'text') {
+    try {
+      plainContent = decodeURIComponent(content)
+    } catch (error) {
+      plainContent = content
+    }
+  }
+  if (plainContent.length > 1000) {
+    return failure('消息内容长度应为 1 到 1000 个字符', 422)
+  }
+  if (type === 'text' && !(await checkTextSecurity(plainContent, user._openid))) {
+    return failure('消息包含敏感内容，请修改后重试', 422)
   }
   const isBundledEmoji = type === 'img' && /^\/res\/Emojis\//.test(content)
   if ((type === 'img' || type === 'voice') && !/^cloud:\/\//i.test(content) && !isBundledEmoji) {
@@ -434,13 +482,24 @@ const sendMessage = async (payload, user) => {
   const duration = type === 'voice' ? Math.min(Math.max(Number(payload.duration) || 0, 1), 60000) : 0
   let reply = null
   if (payload.reply_to) {
-    const replied = await db.collection('messages').doc(String(payload.reply_to)).get()
-    if (replied.data && replied.data.room_id === DEFAULT_ROOM_ID) {
+    const replied = await db.collection('messages').doc(String(payload.reply_to)).get().catch(() => null)
+    if (replied && replied.data && replied.data.room_id === DEFAULT_ROOM_ID) {
       const repliedPayload = replied.data.payload || {}
+      let replyContent = ''
+      if (repliedPayload.type === 'text') {
+        // 先解码再截断，避免把 %XX 转义序列截成非法内容
+        let plain = String(repliedPayload.content || '')
+        try {
+          plain = decodeURIComponent(plain)
+        } catch (error) {
+          plain = String(repliedPayload.content || '')
+        }
+        replyContent = plain.slice(0, 200)
+      }
       reply = {
         message_id: replied.data._id,
         type: repliedPayload.type,
-        content: repliedPayload.type === 'text' ? String(repliedPayload.content || '').slice(0, 200) : '',
+        content: replyContent,
         user_name: String(repliedPayload.user && repliedPayload.user.user_name || '')
       }
     }
@@ -477,21 +536,15 @@ const getMessageList = async (payload) => {
   return success(result.data.map(normalizeMessage))
 }
 
-const getRealtimeState = async (payload, user) => {
-  const room = await getDefaultRoom(user)
-  const messages = await getMessageList(payload)
-  return success({
-    room,
-    messages: messages.data
-  })
-}
-
 const recallMessage = async (payload, user) => {
   if (!payload.message_id) {
     return failure('缺少消息标识', 422)
   }
-  const result = await db.collection('messages').doc(payload.message_id).get()
-  const message = result.data
+  const result = await db.collection('messages').doc(payload.message_id).get().catch(() => null)
+  const message = result && result.data
+  if (!message) {
+    return failure('消息不存在或已撤回', 404)
+  }
   const room = await getDefaultRoom(user)
   if (message._openid !== user._openid && room.room_user !== user._id) {
     return failure('无权撤回该消息', 403)
@@ -528,11 +581,18 @@ const favoriteList = async (payload, user) => {
     where.children = _.neq(true)
   }
   const result = await db.collection('playlists').where(where).orderBy('created_at', 'desc').skip((page - 1) * pageSize).limit(pageSize).get()
-  return success(result.data.map((item) => ({
-    ...validateSong(item.song),
-    // 儿歌分类标记：供收藏页列表右侧按钮显示状态
-    children: !!item.children
-  })))
+  // 单条历史收藏损坏时只跳过该条，避免整个收藏页加载失败
+  return success(result.data.map((item) => {
+    try {
+      return {
+        ...validateSong(item.song),
+        // 儿歌分类标记：供收藏页列表右侧按钮显示状态
+        children: !!item.children
+      }
+    } catch (error) {
+      return null
+    }
+  }).filter(Boolean))
 }
 
 // 收藏页：将收藏歌曲标记为儿歌或移出儿歌
@@ -564,8 +624,8 @@ const queueList = async () => {
 
 const getQueueItem = async (payload) => {
   if (payload.queue_id) {
-    const result = await db.collection('play_queue').doc(String(payload.queue_id)).get()
-    return result.data && result.data.room_id === DEFAULT_ROOM_ID ? result.data : null
+    const result = await db.collection('play_queue').doc(String(payload.queue_id)).get().catch(() => null)
+    return result && result.data && result.data.room_id === DEFAULT_ROOM_ID ? result.data : null
   }
   const result = await db.collection('play_queue').where({
     room_id: DEFAULT_ROOM_ID,
@@ -573,6 +633,11 @@ const getQueueItem = async (payload) => {
     'song.mid': payload.mid
   }).limit(1).get()
   return result.data[0] || null
+}
+
+const getQueueCount = async () => {
+  const result = await db.collection('play_queue').where({ room_id: DEFAULT_ROOM_ID }).count()
+  return Number(result.total) || 0
 }
 
 const addSong = async (payload, user, playNow = false) => {
@@ -592,16 +657,59 @@ const addSong = async (payload, user, playNow = false) => {
       room_id: DEFAULT_ROOM_ID,
       'song.source': normalizeMusicSource(song.source),
       'song.mid': song.mid
-    }).limit(1).get()
+    }).get()
     if (existing.data.length) {
-      return failure('该歌曲已在播放列表中', 409)
+      // 已在队列中的歌曲不再重复入队，也不向用户报错：
+      // 清掉多余副本，把保留的一条重新排到队尾，等同于重新点歌
+      const currentId = room.current_song && room.current_song._id
+      const keep = existing.data.find((item) => String(item._id) === String(currentId)) || existing.data[0]
+      const extras = existing.data.filter((item) => String(item._id) !== String(keep._id))
+      if (extras.length) {
+        await Promise.all(extras.map((item) => db.collection('play_queue').doc(item._id).remove().catch(() => null)))
+      }
+      if (!currentId && keep.song) {
+        // 没有当前歌曲时，复用这条记录作为当前播放项，避免点歌后仍不播放
+        await db.collection('play_queue').doc(keep._id).update({ data: { sort_time: -1 } })
+        await db.collection('rooms').where({
+          room_id: DEFAULT_ROOM_ID,
+          current_song: null
+        }).update({
+          data: {
+            current_song: _.set({ ...keep, since: Math.floor(Date.now() / 1000) }),
+            recent_played: buildRecentPlayed(room, keep.song),
+            updated_at: db.serverDate()
+          }
+        })
+        return success(null, '播放成功')
+      }
+      if (!currentId || String(currentId) !== String(keep._id)) {
+        await db.collection('play_queue').doc(keep._id).update({ data: { sort_time: Date.now() } })
+      }
+      return success(null, '点歌成功')
     }
+  }
+  // 立即播放时清理旧当前歌曲与同曲重复项，并把新歌曲放到队首，
+  // 保证 rooms.current_song 始终对应播放队列第一项，避免切歌时又切回已播歌曲
+  if (playNow) {
+    const currentId = room.current_song && room.current_song._id
+    if (currentId) {
+      await db.collection('play_queue').doc(currentId).remove().catch(() => null)
+    }
+    await db.collection('play_queue').where({
+      room_id: DEFAULT_ROOM_ID,
+      'song.source': normalizeMusicSource(song.source),
+      'song.mid': song.mid
+    }).remove()
+  }
+  if (await getQueueCount() >= MAX_QUEUE_SIZE) {
+    return failure('播放队列已满，请先移除部分歌曲', 409)
   }
   const queueItem = {
     room_id: DEFAULT_ROOM_ID,
     song,
     user: toClientUser(user),
-    sort_time: Date.now(),
+    // 立即播放或队列没有当前歌曲时插到队首，其余点歌按时间追加到队尾
+    sort_time: playNow || !room.current_song ? -1 : Date.now(),
     created_at: db.serverDate()
   }
   const created = await db.collection('play_queue').add({ data: queueItem })
@@ -610,7 +718,6 @@ const addSong = async (payload, user, playNow = false) => {
       data: {
         current_song: _.set({ ...queueItem, _id: created._id, since: Math.floor(Date.now() / 1000) }),
         recent_played: buildRecentPlayed(room, song),
-        auto_refill_paused: false,
         updated_at: db.serverDate()
       }
     })
@@ -621,19 +728,43 @@ const addSong = async (payload, user, playNow = false) => {
 // 移除当前播放歌曲并切到队列下一首；autoPass 时先补一次歌再切，避免唯一歌曲失效后队列直接清空
 const switchToNextSong = async (room, options = {}) => {
   const currentId = room.current_song && room.current_song._id
-  let queue = await db.collection('play_queue').where({ room_id: DEFAULT_ROOM_ID }).orderBy('sort_time', 'asc').limit(2).get()
-  let next = queue.data.find((item) => !currentId || item._id !== currentId) || null
+  const readQueue = () => db.collection('play_queue')
+    .where({ room_id: DEFAULT_ROOM_ID })
+    .orderBy('sort_time', 'asc')
+    .limit(100)
+    .get()
+  let queue = await readQueue()
+  // 切歌前清理当前歌曲在队列中的其他重复项（历史数据可能残留），避免切走后立刻又播回同一首
+  const currentKey = room.current_song && room.current_song.song ? playedSongKey(room.current_song.song) : ''
+  if (currentId && currentKey) {
+    const duplicates = queue.data.filter((item) => String(item._id) !== String(currentId)
+      && item.song && playedSongKey(item.song) === currentKey)
+    if (duplicates.length) {
+      await Promise.all(duplicates.map((item) => db.collection('play_queue').doc(item._id).remove().catch(() => null)))
+      queue = await readQueue()
+    }
+  }
+  // 当前歌曲正常位于队首；严格取当前项之后的一首，
+  // 避免当前项不在队首时把已经播过的歌曲又切回来
+  const pickNext = () => {
+    const items = queue.data
+    if (!currentId) {
+      return items[0] || null
+    }
+    const index = items.findIndex((item) => String(item._id) === String(currentId))
+    return index >= 0 ? (items[index + 1] || null) : (items[0] || null)
+  }
+  let next = pickNext()
   if (!next && options.refillWhenEmpty && options.user) {
     await refillQueue({ count: 2 }, options.user).catch(() => null)
-    queue = await db.collection('play_queue').where({ room_id: DEFAULT_ROOM_ID }).orderBy('sort_time', 'asc').limit(2).get()
-    next = queue.data.find((item) => !currentId || item._id !== currentId) || null
+    queue = await readQueue()
+    next = pickNext()
   }
   const condition = currentId
     ? { room_id: DEFAULT_ROOM_ID, 'current_song._id': currentId }
     : { room_id: DEFAULT_ROOM_ID, current_song: null }
   const switchData = {
     current_song: _.set(next ? { ...next, since: Math.floor(Date.now() / 1000) } : null),
-    auto_refill_paused: !next,
     updated_at: db.serverDate()
   }
   if (next && next.song) {
@@ -695,7 +826,7 @@ const getFavoriteSongs = async (user, childrenOnly) => {
     } catch (error) {
       return null
     }
-  }).filter((song) => song && song.source !== 'wydt'))
+  }).filter((song) => song && (song.source === 'netease' || song.source === 'tencent')))
 }
 
 const addBackupSong = async (song, source, index) => {
@@ -758,7 +889,6 @@ const refillQueue = async (payload, user) => {
         data: {
           current_song: _.set({ ...queue[0], since: Math.floor(Date.now() / 1000) }),
           recent_played: buildRecentPlayed(room, queue[0].song),
-          auto_refill_paused: false,
           updated_at: db.serverDate()
         }
       })
@@ -772,7 +902,6 @@ const refillQueue = async (payload, user) => {
     refill_lock_until: _.lte(now)
   }).update({
     data: {
-      refill_status: 'running',
       refill_lock_until: now + 15000,
       refill_lock_token: lockToken,
       updated_at: db.serverDate()
@@ -810,7 +939,7 @@ const refillQueue = async (payload, user) => {
       .filter((song) => !existingKeys.has(`${song.source}:${song.mid}`))
       .slice(0, Math.max(needed * 2, needed))
     const cachePool = room.children_mode ? [] : cacheSongs
-      .filter((song) => song && !existingKeys.has(`${song.source}:${song.mid}`))
+      .filter((song) => song && (song.source === 'netease' || song.source === 'tencent') && !existingKeys.has(`${song.source}:${song.mid}`))
       .slice(0, Math.max(needed * 2, needed))
     const promptPool = room.children_mode ? [] : clientPoolOf('prompt')
     const childrenPool = room.children_mode ? clientPoolOf('children') : []
@@ -864,7 +993,6 @@ const refillQueue = async (payload, user) => {
         data: {
           current_song: _.set({ ...firstSong, since: Math.floor(Date.now() / 1000) }),
           recent_played: buildRecentPlayed(room, firstSong.song),
-          auto_refill_paused: false,
           updated_at: db.serverDate()
         }
       })
@@ -876,7 +1004,6 @@ const refillQueue = async (payload, user) => {
       refill_lock_token: lockToken
     }).update({
       data: {
-        refill_status: 'idle',
         refill_lock_until: 0,
         refill_lock_token: '',
         updated_at: db.serverDate()
@@ -956,7 +1083,29 @@ const removeQueueSong = async (payload, user) => {
     if (room.room_user !== user._id && requesterId !== user._id) {
       return failure('无权移除该歌曲', 403)
     }
-    await db.collection('play_queue').doc(item._id).remove()
+    // 移除正在播放的歌曲时同步切歌，避免 current_song 仍指向已删除的队列项，
+    // 导致该歌曲一直处于“正在播放”而无法重新点歌
+    if (room.current_song && String(room.current_song._id) === String(item._id)) {
+      const result = await switchToNextSong(room, { refillWhenEmpty: true, user })
+      if (!result.advanced) {
+        await db.collection('play_queue').doc(item._id).remove().catch(() => null)
+      }
+    } else if (item.song && item.song.source && item.song.mid) {
+      // 同曲可能存在历史重复项，移除时一并清理；当前播放项必须排除，
+      // 否则会把仍在播放的队列行删掉，导致 rooms.current_song 指向已删除项
+      const duplicateWhere = {
+        room_id: DEFAULT_ROOM_ID,
+        'song.source': normalizeMusicSource(item.song.source),
+        'song.mid': String(item.song.mid)
+      }
+      const currentId = room.current_song && room.current_song._id
+      if (currentId) {
+        duplicateWhere._id = _.neq(currentId)
+      }
+      await db.collection('play_queue').where(duplicateWhere).remove()
+    } else {
+      await db.collection('play_queue').doc(item._id).remove()
+    }
   }
   return success(null, '移除成功')
 }
@@ -993,7 +1142,6 @@ const setChildrenMode = async (payload, user) => {
           children_mode: false,
           // 退出时停止当前儿歌，交给正常模式重新补歌并恢复播放
           current_song: _.set(null),
-          auto_refill_paused: false,
           updated_at: db.serverDate()
         }
       })
@@ -1016,7 +1164,6 @@ const setChildrenMode = async (payload, user) => {
     await db.collection('rooms').where({ room_id: DEFAULT_ROOM_ID }).update({
       data: {
         current_song: _.set(null),
-        auto_refill_paused: false,
         updated_at: db.serverDate()
       }
     })
@@ -1036,7 +1183,6 @@ const setChildrenMode = async (payload, user) => {
     data: {
       current_song: _.set({ ...queueItem, _id: created._id, since: Math.floor(Date.now() / 1000) }),
       recent_played: buildRecentPlayed(room, song),
-      auto_refill_paused: false,
       updated_at: db.serverDate()
     }
   })
@@ -1067,18 +1213,9 @@ const handlers = {
   'room/getSearchPrompts': async (payload, user) => success(normalizeSearchPrompts((await getDefaultRoom(user)).search_prompts)),
   'room/updateSearchPrompts': updateSearchPrompts,
   'room/setChildrenMode': setChildrenMode,
-  'app/getRealtimeState': getRealtimeState,
   'message/getMessageList': getMessageList,
   'message/send': sendMessage,
   'message/back': recallMessage,
-  'message/clear': async (payload, user) => {
-    const room = await getDefaultRoom(user)
-    if (room.room_user !== user._id) {
-      return failure('无权清空消息', 403)
-    }
-    await db.collection('messages').where({ room_id: DEFAULT_ROOM_ID }).remove()
-    return success(null, '消息已清空')
-  },
   'song/songList': queueList,
   'song/addSong': addSong,
   'song/playSong': (payload, user) => addSong(payload, user, true),
@@ -1096,8 +1233,8 @@ const handlers = {
     if (!payload.mid) {
       return success([])
     }
-    // 只有网易云提供官方歌词；QQ 与电台歌曲返回空歌词
-    if (normalizeMusicSource(payload.source) !== 'netease') {
+    // 只有网易云提供官方歌词；QQ、电台、酷狗及缺失来源的历史数据统一返回空歌词
+    if (String(payload.source || '').toLowerCase() !== 'netease') {
       return success([])
     }
     try {
@@ -1116,8 +1253,7 @@ const handlers = {
     } catch (error) {
       return success({})
     }
-  },
-  'attach/search': async () => success([])
+  }
 }
 
 exports.main = async (event) => {

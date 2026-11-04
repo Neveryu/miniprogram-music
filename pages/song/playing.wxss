@@ -13,13 +13,6 @@
   margin-bottom: env(safe-area-inset-bottom);
 }
 
-.number {
-  font-size: 16px;
-  font-weight: bolder;
-  color: #ff4500;
-  margin-right: 5px;
-}
-
 .tipImage {
   text-align: center;
   margin-top: 20%;

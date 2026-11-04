@@ -2,7 +2,7 @@
 
 ## 当前目标
 
-项目使用微信云开发承载登录、聊天室、歌曲队列和文件存储；网易云歌单、用户和歌单歌曲详情使用独立的 jusic-serve WebSocket 通道。当前业务固定使用一个默认房间，不提供创建、搜索或切换房间功能。
+项目使用微信云开发承载登录、聊天室、歌曲队列和文件存储；网易云、QQ 音乐与电台的歌曲、歌单和用户数据使用独立的 jusic-serve WebSocket 通道。当前业务固定使用一个默认房间，不提供创建、搜索或切换房间功能。
 
 ## 当前架构
 
@@ -48,9 +48,9 @@ cloudfunctions/musicApp
 | 集合 | 用途 | 关键字段 | 推荐索引 |
 | --- | --- | --- | --- |
 | `users` | 微信用户和资料 | `_openid`、`user_name`、`user_head`、`user_sex` | `_openid` 唯一 |
-| `rooms` | 唯一默认房间、当前歌曲和自动补歌状态 | `room_id`、`room_name`、`room_user`、`current_song`、`search_prompts`、`backup_songs`、`refill_lock_until`、`auto_refill_paused`、`children_mode` | `room_id` 唯一 |
+| `rooms` | 唯一默认房间、当前歌曲和自动补歌状态 | `room_id`、`room_name`、`room_user`、`current_song`、`search_prompts`、`backup_songs`、`refill_lock_until`、`children_mode` | `room_id` 唯一 |
 | `messages` | 文本、图片、语音和引用消息 | `room_id`、`payload`、`created_timestamp` | `room_id + created_timestamp` |
-| `play_queue` | 待播放队列 | `room_id`、`song`、`sort_time`、`auto_added`、`backup_source` | `room_id + sort_time` |
+| `play_queue` | 待播放队列（最多 100 条） | `room_id`、`song`、`sort_time`、`auto_added`、`backup_source` | `room_id + sort_time` |
 | `playlists` | 用户歌曲收藏 | `_openid`、`source`、`mid`、`song`、`children`（儿歌分类标记） | `_openid + source + mid` 唯一 |
 
 数据库规则和索引定义文件位于 `cloudfunctions/musicApp/database.rules.json` 和 `cloudfunctions/musicApp/database.indexes.json`，部署时需在云控制台手动创建对应集合与索引。
@@ -101,7 +101,7 @@ OPENID 不返回客户端，也不作为客户端请求参数。
 
 不再维护在线用户、最近活跃时间或在线人数。
 
-应将数据库权限设置为客户端只读，写操作全部通过云函数完成。云函数使用服务端权限读写数据库。
+应只对 `messages`、`rooms` 开放客户端读取（用于实时监听），`users`、`playlists`、`play_queue` 建议关闭客户端读取；所有写操作通过云函数完成。`database.rules.json` 只是规则模板，实际权限需在云控制台按集合配置。
 
 ## 文件存储
 
@@ -117,8 +117,8 @@ OPENID 不返回客户端，也不作为客户端请求参数。
 音乐搜索与播放地址统一由客户端通过 jusic-serve WebSocket 获取：
 
 - 网易云、QQ 音乐和网易电台的歌曲/歌单/用户/电台搜索由 `utils/jusicWsApi.js` 直接请求，只返回元数据。
-- 播放地址在点歌/播放前通过 `/music/pick` 获取带签名的直链，随歌曲入队；直链失效时客户端重新点播一次，仍失败再自动切歌。
-- 网易云歌词由 `musicApp` 云函数请求 `https://music.163.com/api/song/lyric`，并做 30 分钟缓存；QQ 与电台歌曲不提供歌词。
+- 播放地址在点歌/播放前通过 `/music/pick` 获取带签名的直链，随歌曲入队；直链失效时客户端重新点播一次，仍失败再自动切歌。云函数只接受已知音乐 CDN 域名（`music.126.net`、`qqmusic.qq.com`、`gtimg.cn` 等）的直链。
+- 网易云歌词由 `musicApp` 云函数请求 `https://music.163.com/api/song/lyric`，并做 30 分钟缓存；QQ、电台与酷狗歌曲不提供歌词。
 - 网易云搜索缺少封面时，客户端调用 `song/getCovers`，云函数请求 `https://music.163.com/api/song/detail` 批量补全，命中缓存 24 小时。
 - 酷狗 Meting 链路已停用，历史来源标识保留，但无法重新解析播放地址。
 
@@ -128,7 +128,7 @@ WebSocket 地址：
 wss://xin.hanxin.vip/server/{serverId}/{sessionId}/websocket
 ```
 
-云函数定时触发器 `refillPlaybackQueue` 周期性检查默认房间播放队列；客户端在线时先通过 WS 搜索提示词/儿歌词池候选并随 `song/refill` 提交，云函数与「我的歌曲收藏 / 房间缓存」按 5:3:2 或「儿歌收藏 / 词池候选」按 3:2 加权补入。定时触发时没有客户端候选，只使用收藏和缓存。
+云函数定时触发器 `refillPlaybackQueue` 周期性检查默认房间播放队列；客户端在线时先确认队列不足 3 首，再通过 WS 搜索提示词/儿歌词池候选并随 `song/refill` 提交，云函数与「我的歌曲收藏 / 房间缓存」按 5:3:2 或「儿歌收藏 / 词池候选」按 3:2 加权补入。收藏和缓存候选只保留 `netease` / `tencent`。定时触发没有客户端候选，正常模式只用收藏和缓存，儿歌模式只用儿歌收藏。
 
 详细 destination、握手顺序、播放地址与歌词说明见 [meting-api.md](./meting-api.md)。
 
@@ -150,8 +150,8 @@ wss://xin.hanxin.vip/server/{serverId}/{sessionId}/websocket
 1. 创建云开发环境，并确认 `config/cloud.js` 中的环境 ID 与目标环境一致。
 2. 创建 `users`、`rooms`、`messages`、`play_queue`、`playlists` 五个集合。
 3. 按上表创建索引（参考 `cloudfunctions/musicApp/database.indexes.json`）。
-4. 将集合客户端权限设为只读或禁止直接写入（参考 `cloudfunctions/musicApp/database.rules.json`）。
-5. 部署 `musicApp` 云函数并安装云端依赖，按需配置超时时间（云函数默认 3 秒上限，外部音乐接口调用可能超时）。
+4. 按集合配置客户端权限：`messages`、`rooms` 可读，`users`、`playlists`、`play_queue` 关闭读取；所有集合禁止客户端直接写入（参考 `cloudfunctions/musicApp/database.rules.json`）。
+5. 部署 `musicApp` 云函数并安装云端依赖，按需配置超时时间（云函数默认 3 秒上限，外部音乐接口调用可能超时）；`config.json` 已声明 `security.msgSecCheck` 权限，用于文字消息内容安全检测。
 6. 按需为 `musicApp` 配置定时触发器 `refillPlaybackQueue` 以启用周期性自动补歌。
 7. 将云存储权限设置为「所有用户可读，仅创建者可写」，确保跨用户头像、图片和语音可读。
 8. 验证已有用户可静默进入；新用户须勾选协议同意并通过微信一键登录创建。
@@ -162,6 +162,6 @@ wss://xin.hanxin.vip/server/{serverId}/{sessionId}/websocket
 
 ## 当前边界
 
-- `musicApp` 云函数负责登录、聊天室、歌曲队列、收藏和网易云歌词，不再发起音乐搜索或播放地址请求。
+- `musicApp` 云函数负责登录、聊天室、歌曲队列、收藏、网易云歌词和封面补全，不再发起音乐搜索或播放地址请求。
 - `utils/jusicWsApi.js` 负责网易云/QQ/电台的歌曲、歌单、用户、电台搜索，以及 `/music/pick` 播放直链获取。
 - 小程序通过云数据库权限和云函数完成业务数据读写，客户端不直接写入业务集合。
