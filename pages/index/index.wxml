@@ -109,7 +109,7 @@
   <movable-area>
     <movable-view class="{{roomInfo.children_mode ? 'children-player-circle' : ''}}" inertia="true" direction="all" bindtap="showSongMenu" bindlongpress="setSimplePlayer"
       wx:if="{{simplePlayer}}">
-      <image class="player_bg" src="../../res/image/player_bg.png"></image>
+      <image class="player_bg" src="/res/image/player_bg.png"></image>
       <view>
         <image class="{{isMusicPlaying ? 'music-cover-playing' : ''}}" wx:if="{{songInfo && songInfo.song && !playerPicError}}" src="{{helper.getStaticUrl(songInfo.song.pic)}}" mode="widthFix" binderror="onPlayerPicError">
         </image>

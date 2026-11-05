@@ -950,7 +950,7 @@ Page({
     switch (e.mark.title) {
       case '驾驶':
         wx.navigateTo({
-          url: '../song/car-mode?bbbug=' + app.globalData.systemVersion,
+          url: '../song/car-mode',
           events: {
             destroyed: () => {
               this.setData({
@@ -1021,12 +1021,6 @@ Page({
       case 'text':
         menuList.push('复制文字')
         break
-      case 'jump':
-        menuList.push('进入房间')
-        break
-      case 'link':
-        menuList.push('复制链接')
-        break
       default:
         break
     }
@@ -1051,11 +1045,6 @@ Page({
               replyTarget: { message: msg }
             })
             break
-          case '复制链接':
-            wx.setClipboardData({
-              data: decodeURIComponent(msg.link)
-            })
-            break
           case '撤回消息':
             app.request({
               url: 'message/back',
@@ -1068,12 +1057,6 @@ Page({
                 // not todo
               }
             })
-            break
-          case '进入房间':
-            this.setData({
-              room_id: msg.jump.room_id
-            })
-            this.getRoomInfo()
             break
           default:
             wx.showToast({

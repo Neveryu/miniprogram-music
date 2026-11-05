@@ -10,8 +10,7 @@ Component({
    */
   data: {
     bbbug: false,
-    songList: [],
-    room_id: 0
+    songList: []
   },
 
   /**

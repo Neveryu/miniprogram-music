@@ -29,7 +29,6 @@ Component({
       { value: 'tencent', label: 'QQ音乐' }
     ],
     source: 'netease',
-    room_id: 0,
   },
   lifetimes: {},
   /**

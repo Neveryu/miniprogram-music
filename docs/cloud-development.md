@@ -130,7 +130,7 @@ wss://xin.hanxin.vip/server/{serverId}/{sessionId}/websocket
 
 云函数定时触发器 `refillPlaybackQueue` 周期性检查默认房间播放队列；客户端在线时先确认队列不足 3 首，再通过 WS 搜索提示词/儿歌词池候选并随 `song/refill` 提交，云函数与「我的歌曲收藏 / 房间缓存」按 5:3:2 或「儿歌收藏 / 词池候选」按 3:2 加权补入。收藏和缓存候选只保留 `netease` / `tencent`。定时触发没有客户端候选，正常模式只用收藏和缓存，儿歌模式只用儿歌收藏。
 
-详细 destination、握手顺序、播放地址与歌词说明见 [meting-api.md](./meting-api.md)。
+详细 destination、握手顺序、播放地址与歌词说明见 [jusic-api.md](./jusic-api.md)。
 
 云数据库中的歌曲统一使用以下结构：
 

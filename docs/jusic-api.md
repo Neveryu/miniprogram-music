@@ -1,6 +1,6 @@
 # 音乐接口与 WebSocket 说明
 
-> 文件名保留历史路径，内容已迁移为 jusic-serve WebSocket 与网易云歌词说明。
+> 项目音乐接口已从历史 Meting-API 迁移至 jusic-serve WebSocket，下文描述当前协议。
 
 ## 1. 架构概览
 

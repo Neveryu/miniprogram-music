@@ -637,54 +637,6 @@ movable-view image {
   text-align: left;
 }
 
-.bbbug_history .bbbug_item .bbbug_content .bbbug_link {
-  background-color: white;
-  border-radius: 10px;
-  padding: 8px 10px;
-  display: inline-block;
-  max-width: 90%;
-  word-break: break-all;
-  word-wrap: break-word;
-  font-size: 16px;
-  color: #333;
-  text-align: left;
-  box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.1);
-}
-
-.bbbug_history .bbbug_item .bbbug_content .bbbug_link .bbbug_link_title {
-  font-size: 16px;
-  color: #333;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.bbbug_history .bbbug_item .bbbug_content .bbbug_link .bbbug_link_desc {
-  font-size: 12px;
-  color: #999999;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
-  overflow: hidden;
-  -webkit-box-orient: vertical;
-}
-
-.bbbug_history .bbbug_item .bbbug_content .bbbug_link .bbbug_link_url {
-  font-size: 12px;
-  background-color: #666;
-  color: #fff;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  margin: -10px;
-  margin-top: 20px;
-  border-bottom-left-radius: 5px;
-  border-bottom-right-radius: 5px;
-  padding: 0px 10px;
-}
-
 .bbbug_history .bbbug_mine .bbbug_content .bbbug_text {
   background-color: #cccccc;
   color: #333333;

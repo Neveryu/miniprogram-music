@@ -4,7 +4,7 @@
     <view class="hero-icon">♪</view>
     <view class="hero-text">
       <view class="hero-title">搜索提示词</view>
-      <view class="hero-desc">出现在搜索点歌页的大家正在找，房间成员可共同维护</view>
+      <view class="hero-desc">出现在搜索点歌页的大家正在找，仅房主可维护</view>
     </view>
     <view class="hero-count">{{prompts.length}}<text class="hero-count-unit"> / 20</text></view>
   </view>

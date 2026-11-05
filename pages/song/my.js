@@ -12,7 +12,6 @@ Component({
   data: {
     bbbug: false,
     songList: [],
-    room_id: 0,
     page: 1,
     isLoading: false,
     hasMore: true,
