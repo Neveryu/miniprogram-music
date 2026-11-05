@@ -17,6 +17,11 @@ export function checkMiniprogramVersion() {
     })
   })
   updateManager.onUpdateFailed(function () {
-    // 新版本下载失败
+    // 新版本下载失败：轻提示，避免用户长期停留在旧版本而不自知
+    wx.showToast({
+      title: '新版本下载失败，请稍后重试',
+      icon: 'none',
+      duration: 2000
+    })
   })
 }

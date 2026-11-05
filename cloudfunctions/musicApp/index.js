@@ -416,10 +416,8 @@ const getDefaultRoom = async (user) => {
 }
 
 const normalizeMessage = (doc) => {
-  // _openid 只保留在服务端，不返回给客户端
-  const { _openid, ...rest } = doc || {}
+  // _openid、原始 payload 与 created_at 只保留在服务端；客户端 history 只需以下三个字段
   return {
-    ...rest,
     message_id: doc._id,
     message_content: JSON.stringify(doc.payload),
     message_createtime: doc.created_timestamp

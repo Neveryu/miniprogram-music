@@ -1,5 +1,4 @@
 import config from '../../config/index.js'
-import api from '../../config/api.js'
 const app = getApp()
 const jusicWsApi = require('../../utils/jusicWsApi.js')
 const { pickChildrenKeywords } = require('../../utils/childrenKeywords.js')
@@ -77,8 +76,8 @@ Page({
     carEventChannel: null
   },
   messageListScrolling(e) {
-    let res = wx.getSystemInfoSync()
-    if (res.windowHeight + 50 < e.detail.scrollHeight - e.detail.scrollTop) {
+    const windowHeight = app.systemInfo ? app.systemInfo.windowHeight : 0
+    if (windowHeight + 50 < e.detail.scrollHeight - e.detail.scrollTop) {
       this.setData({
         isScrollEnabled: false
       })
@@ -268,7 +267,7 @@ Page({
   getMyInfo(reloadRoom = true) {
     wx.showNavigationBarLoading()
     app.request({
-      url: api.getMyInfo,
+      url: 'user/getmyinfo',
       success: (res) => {
         app.saveUserInfo(res.data)
         this.setData({
@@ -299,7 +298,7 @@ Page({
   getRoomInfo() {
     wx.showNavigationBarLoading()
     app.request({
-      url: api.getRoomInfo,
+      url: 'room/getRoomInfo',
       data: {
         room_id: this.data.room_id
       },
@@ -864,7 +863,7 @@ Page({
   // 获取当前房间的消息
   getMessageList() {
     app.request({
-      url: api.getMessageList,
+      url: 'message/getMessageList',
       data: {
         room_id: this.data.room_id,
         per_page: this.data.historyMax
@@ -879,7 +878,7 @@ Page({
             continue
           }
           if (_obj) {
-            _obj.message_id = res.data[i].message_id || res.data[i]._id
+            _obj.message_id = res.data[i].message_id
             _obj.message_time = res.data[i].message_createtime
             if (_obj.type === 'text') {
               _obj.content = decodeMessageText(_obj.content)
@@ -1143,7 +1142,7 @@ Page({
               break
             }
             app.request({
-              url: api.addMySong,
+              url: 'song/addMySong',
               data: {
                 room_id: app.globalData.roomInfo.room_id,
                 mid: this.data.songInfo.song.mid,
@@ -1496,7 +1495,7 @@ Page({
   },
   login() {
     wx.navigateTo({
-      url: '../user/login?bbbug=' + app.globalData.systemVersion
+      url: '../user/login'
     })
   },
   // 空队列时从播放器直接进入点歌页

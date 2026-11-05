@@ -52,7 +52,7 @@ App({
   onLaunch() {
     checkMiniprogramVersion()
     this.globalData.userInfo = this.readStoredUserInfo()
-    this.systemInfo = wx.getSystemInfoSync()
+    this.systemInfo = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync()
     if (!wx.cloud) {
       wx.showModal({
         title: '基础库版本过低',

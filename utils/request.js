@@ -67,7 +67,7 @@ const request = (data = {}) => {
             success: (modalRes) => {
               if (modalRes.confirm) {
                 wx.navigateTo({
-                  url: '/pages/user/login?bbbug=' + getApp().globalData.systemVersion
+                  url: '/pages/user/login'
                 })
               }
             }
