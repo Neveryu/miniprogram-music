@@ -24,12 +24,14 @@ const CHILDREN_REFILL_WEIGHTS = { favorite: 3, children: 2 }
 const MAX_QUEUE_SIZE = 100
 // 只接受已知音乐 CDN 的播放直链，避免客户端伪造任意外部音频地址
 const TRUSTED_AUDIO_DOMAINS = ['music.126.net', '126.net', 'music.163.com', '163.com', 'qqmusic.qq.com', 'gtimg.cn', 'qq.com']
-// 游客（未登录）可访问的只读接口：房间、提示词、消息、队列、歌词与封面
+// 游客（未登录）可访问的只读接口：房间、提示词、消息、队列、歌词与封面；
+// song/ended 为歌曲自然播完后的自动推进，finishSong 不依赖登录用户且有队列一致性校验，故也对游客开放，避免单人游客房间播完不续播
 const GUEST_ACTIONS = [
   'room/getRoomInfo',
   'room/getSearchPrompts',
   'message/getMessageList',
   'song/songList',
+  'song/ended',
   'song/getLrc',
   'song/getCovers'
 ]
@@ -363,6 +365,40 @@ const ensureDefaultRoom = async (user) => {
   }
 }
 
+// 读时自愈：rooms.current_song 是指向播放队列项的存储快照，正常流程必然对应一条真实存在的
+// play_queue 记录；若云函数被中断（如 -404012 轮询超时）停在“先删队列、后改指针”的中间态，
+// current_song 会悬空指向已删除项，导致该歌既不在待播列表、又一直被点歌去重判为“正在播放中”而无法重播。
+// 这里统一校验：悬空时把 current_song 修正为队列首项（重新计时）或清空，让房间状态自洽。
+const healCurrentSong = async (room) => {
+  if (!room || !room.current_song || !room.current_song._id) {
+    return room
+  }
+  const currentId = String(room.current_song._id)
+  const result = await db.collection('play_queue').doc(currentId).get().catch(() => null)
+  const row = result && result.data && String(result.data.room_id || DEFAULT_ROOM_ID) === String(DEFAULT_ROOM_ID)
+    ? result.data
+    : null
+  if (row) {
+    return room
+  }
+  // 悬空：取队列首项补位，队列为空则清空 current_song
+  const headResult = await db.collection('play_queue')
+    .where({ room_id: DEFAULT_ROOM_ID })
+    .orderBy('sort_time', 'asc')
+    .limit(1)
+    .get()
+  const head = headResult.data[0]
+  const next = head ? { ...head, since: Math.floor(Date.now() / 1000) } : null
+  await db.collection('rooms').doc(room._id).update({
+    data: {
+      current_song: _.set(next),
+      updated_at: db.serverDate()
+    }
+  }).catch(() => null)
+  room.current_song = next
+  return room
+}
+
 const getDefaultRoom = async (user) => {
   const room = await ensureDefaultRoom(user)
   const roomDefaults = {}
@@ -412,7 +448,8 @@ const getDefaultRoom = async (user) => {
       room.current_song = null
     }
   }
-  return room
+  // 读时自愈：保证返回的 current_song 一定指向真实存在的队列行
+  return await healCurrentSong(room)
 }
 
 const normalizeMessage = (doc) => {
@@ -645,6 +682,8 @@ const addSong = async (payload, user, playNow = false) => {
   }
   const song = validateSong(payload.song || payload)
   // 防重复点歌：已在队列或正在播放的歌曲直接拒绝（立即播放除外）
+  // room 来自 getDefaultRoom，其 current_song 已由 healCurrentSong 校验，必指向真实存在的队列行，
+  // 因此这里命中即代表该歌确实是当前播放项，悬空快照不会再误拦点歌
   if (!playNow) {
     if (room.current_song && room.current_song.song
       && normalizeMusicSource(room.current_song.song.source) === normalizeMusicSource(song.source)
@@ -691,6 +730,16 @@ const addSong = async (payload, user, playNow = false) => {
   if (playNow) {
     const currentId = room.current_song && room.current_song._id
     if (currentId) {
+      // 先把 current_song 置空再删除其队列行：即便删除后调用被中断，current_song 也不会悬空指向已删记录
+      await db.collection('rooms').where({
+        room_id: DEFAULT_ROOM_ID,
+        'current_song._id': currentId
+      }).update({
+        data: {
+          current_song: _.set(null),
+          updated_at: db.serverDate()
+        }
+      }).catch(() => null)
       await db.collection('play_queue').doc(currentId).remove().catch(() => null)
     }
     await db.collection('play_queue').where({
@@ -1148,10 +1197,12 @@ const setChildrenMode = async (payload, user) => {
     }
     return success({ children_mode: false }, '儿歌模式已关闭')
   }
-  // 先置位再清空队列：后续补歌自动走「儿歌收藏 + 客户端 WS 词池候选」
+  // 先置位并把 current_song 清空，再清空队列：保证删除队列行时不会有 current_song 悬空指向已删记录；
+  // 后续补歌自动走「儿歌收藏 + 客户端 WS 词池候选」
   await db.collection('rooms').doc(room._id).update({
     data: {
       children_mode: true,
+      current_song: _.set(null),
       updated_at: db.serverDate()
     }
   })
@@ -1159,12 +1210,6 @@ const setChildrenMode = async (payload, user) => {
   // 优先播放用户「儿歌」收藏；没有收藏时交给客户端用 WS 搜索补充首曲
   const song = (await getFavoriteSongs(user, true))[0]
   if (!song) {
-    await db.collection('rooms').where({ room_id: DEFAULT_ROOM_ID }).update({
-      data: {
-        current_song: _.set(null),
-        updated_at: db.serverDate()
-      }
-    })
     return success({ children_mode: true, has_song: false }, '儿歌模式已开启，正在准备儿歌')
   }
   const queueItem = {
@@ -1207,7 +1252,11 @@ const updateSearchPrompts = async (payload, user) => {
 
 const handlers = {
   'user/getmyinfo': async (payload, user) => success(toClientUser(user)),
-  'room/getRoomInfo': async (payload, user) => success(await getDefaultRoom(user)),
+  // 附带服务端当前时间戳 serverTime，供客户端进房时校准本机与服务器的时钟差（切歌 seek 不受本机钟差影响）
+  'room/getRoomInfo': async (payload, user) => {
+    const room = await getDefaultRoom(user)
+    return { code: 200, msg: '操作成功', data: room, serverTime: Date.now() }
+  },
   'room/getSearchPrompts': async (payload, user) => success(normalizeSearchPrompts((await getDefaultRoom(user)).search_prompts)),
   'room/updateSearchPrompts': updateSearchPrompts,
   'room/setChildrenMode': setChildrenMode,

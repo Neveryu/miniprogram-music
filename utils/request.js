@@ -24,6 +24,49 @@ const getCloudErrorContent = (error) => {
   return `${reason}\n环境：${cloudConfig.env}\n函数：${cloudConfig.functionName}\n错误：${errCode}\n${errMsg}`
 }
 
+// 云调用传输层轮询超时（-404012）多为瞬时网络抖动，函数在服务端往往已执行成功，只是回包未送达 SDK。
+// 对这类错误静默重试一次，避免动辄弹「云服务连接失败」；重试仅限下面的白名单操作——它们要么只读、
+// 要么带服务端幂等/一致性校验，可安全重发；未列入者（如 message/send 发消息、登录）一律不自动重试。
+const isTransportTimeout = (error) => {
+  const code = error && (error.errCode || error.code)
+  const message = String((error && (error.errMsg || error.message)) || '').toLowerCase()
+  return code === -404012 || message.indexOf('polling exceed') > -1
+}
+const SAFE_RETRY_ACTIONS = [
+  'user/getmyinfo',
+  'room/getRoomInfo',
+  'room/getSearchPrompts',
+  'room/updateSearchPrompts',
+  'room/setChildrenMode',
+  'message/getMessageList',
+  'message/back',
+  'song/songList',
+  'song/addSong',
+  'song/playSong',
+  'song/addMySong',
+  'song/mySongList',
+  'song/deleteMySong',
+  'song/toggleMySongChildren',
+  'song/remove',
+  'song/push',
+  'song/pass',
+  'song/autoPass',
+  'song/ended',
+  'song/refill',
+  'song/getLrc',
+  'song/getCovers'
+]
+const invokeCloud = (data) => wx.cloud.callFunction({
+  name: cloudConfig.functionName,
+  config: {
+    env: cloudConfig.env
+  },
+  data: {
+    action: data.url,
+    payload: data.data || {}
+  }
+})
+
 const request = (data = {}) => {
   if (data.loading) {
     wx.showLoading({
@@ -32,16 +75,7 @@ const request = (data = {}) => {
     })
   }
 
-  wx.cloud.callFunction({
-    name: cloudConfig.functionName,
-    config: {
-      env: cloudConfig.env
-    },
-    data: {
-      action: data.url,
-      payload: data.data || {}
-    }
-  }).then((result) => {
+  const handleSuccess = (result) => {
     data.loading && wx.hideLoading()
     const response = result.result || {}
     switch (response.code) {
@@ -87,7 +121,9 @@ const request = (data = {}) => {
           showCancel: false
         })
     }
-  }).catch((error) => {
+  }
+
+  const handleFailure = (error) => {
     data.loading && wx.hideLoading()
     console.error('[CloudRequest]', data.url, error)
     if (data.fail) {
@@ -99,6 +135,15 @@ const request = (data = {}) => {
       content: getCloudErrorContent(error),
       showCancel: false
     })
+  }
+
+  invokeCloud(data).then(handleSuccess).catch((error) => {
+    // 瞬时传输超时且为白名单内的幂等/可安全重发操作：保留 loading，静默重试一次
+    if (isTransportTimeout(error) && SAFE_RETRY_ACTIONS.indexOf(data.url) > -1) {
+      invokeCloud(data).then(handleSuccess).catch(handleFailure)
+      return
+    }
+    handleFailure(error)
   })
 }
 

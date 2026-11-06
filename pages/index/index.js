@@ -171,10 +171,8 @@ Page({
         return
       }
       this.clearPlaybackGuard()
-      // 游客不能推进公共队列，等登录用户触发切歌，避免弹出登录框
-      if (!this.data.userInfo) {
-        return
-      }
+      // 游客也允许在歌曲自然播完时推进队列（song/ended 已加入游客白名单，不会弹登录框）；
+      // 补歌仍仅限登录用户，见 refillPlaybackQueue 内的 userInfo 守卫
       this.setData({ autoPassSongId: songInfo._id })
       app.request({
         url: 'song/ended',
@@ -305,6 +303,10 @@ Page({
       success: (res) => {
         wx.hideNavigationBarLoading()
         wx.hideLoading()
+        // 进房时用服务端时间戳校准本机时钟（误差约一个下行延迟，秒级 seek 可忽略）
+        if (res.serverTime) {
+          app.globalData.clockOffsetMs = res.serverTime - Date.now()
+        }
         this.setData({
           roomInfo: res.data
         })
@@ -486,8 +488,20 @@ Page({
     clearTimeout(this.refillRetryTimer)
     this.refillRetryTimer = null
     this.clearPlaybackGuard()
+    // 上一首是否真正在播（需在重置 playbackConfirmed 前读取）：用于区分“会话内连续切歌”与“首次进房/重连接回”
+    const wasPlaying = this.data.isMusicPlaying && this.playbackConfirmed === true
     this.playbackConfirmed = false
-    this.pendingResumePosition = typeof resumePosition === 'number' ? resumePosition : null
+    // 起始偏移策略（均在“检测到切歌/进房”当下就冻结到 __seekPosition，seek 不受 WS 解析耗时影响）：
+    // 1) 显式恢复位置优先（如“关闭音乐后重新打开”的本机暂停点）；
+    // 2) 会话内连续切歌（本机一直在听）→ 从头播放，没人比我更靠前，也排除解析等待；
+    // 3) 首次进房 / 重连接回 / 停止后再起播（上一首并未在播）→ 按 since 追齐到房间时间轴，保证多人同步
+    if (typeof resumePosition === 'number') {
+      msg.__seekPosition = Math.max(0, resumePosition)
+    } else if (wasPlaying) {
+      msg.__seekPosition = 0
+    } else {
+      msg.__seekPosition = this.computePlaybackSeekPosition(msg)
+    }
     this.data.resumeSongId = ''
     this.data.resumePosition = 0
     this.data.playerSwitchingUntil = Date.now() + PLAYER_SWITCH_GRACE
@@ -542,28 +556,33 @@ Page({
     if (/[?&]type=url(?:&|$)/i.test(value)) return ''
     return value
   },
+  // 在检测到切歌/进房的当下计算起始播放偏移（基于校准后的服务端 since），并按歌曲时长封顶
+  computePlaybackSeekPosition(msg) {
+    const nowSeconds = Math.floor((Date.now() + (app.globalData.clockOffsetMs || 0)) / 1000)
+    const since = Number(msg.since) || 0
+    // since 缺失或异常时按从头播放，避免 seek 到超大位置
+    const knownSince = since > 0 && since <= nowSeconds ? since : nowSeconds
+    let seekPosition = Math.max(0, nowSeconds - knownSince)
+    const duration = Number(msg.song && msg.song.duration) || 0
+    if (duration > 0) {
+      seekPosition = Math.min(seekPosition, Math.max(0, Math.floor(duration / 1000) - 1))
+    }
+    return seekPosition
+  },
   // 统一设置播放器并开始播放
   startPlayback(msg, url, announce = true) {
     const userName = (msg.user && msg.user.user_name) || '听众'
     const roomName = (this.data.roomInfo && this.data.roomInfo.room_name) || ''
-    const nowSeconds = Math.floor(Date.now() / 1000)
-    const since = Number(msg.since) || 0
-    const resumePosition = this.pendingResumePosition
-    this.pendingResumePosition = null
     this.data.bgPlayer.src = url
     this.data.bgPlayer.title = msg.song.name + ' - ' + msg.song.singer
     this.data.bgPlayer.singer = '点歌人: ' + userName + ' ' + roomName + ' '
     this.data.bgPlayer.coverImgUrl = msg.song.pic
     this.data.bgPlayer.webUrl = msg.song.pic
-    // since 缺失或异常时按从头播放，避免 seek 到超大位置
-    const knownSince = since > 0 && since <= nowSeconds ? since : nowSeconds
-    let seekPosition = resumePosition === null
-      ? Math.max(0, nowSeconds - knownSince)
-      : Math.max(0, resumePosition)
-    const duration = Number(msg.song.duration) || 0
-    if (duration > 0) {
-      seekPosition = Math.min(seekPosition, Math.max(0, Math.floor(duration / 1000) - 1))
-    }
+    // 起始偏移已在 playMusic 检测到切歌/进房时算好并做过时长封顶，这里直接取用，
+    // 使 WS 解析直链的等待时间不再计入 seek（修复需解析的歌曲从中间播放）
+    const seekPosition = typeof msg.__seekPosition === 'number'
+      ? msg.__seekPosition
+      : this.computePlaybackSeekPosition(msg)
     this.data.bgPlayer.seek(seekPosition)
     if (this.data.isMusicPlaying) {
       if (announce) {

@@ -11,6 +11,8 @@ App({
     systemVersion: String(Date.now()),
     roomInfo: null,
     userInfo: null,
+    // 本机与云服务器的时钟偏移（毫秒，serverTime - 本机时间），进房时校准，供切歌 seek 抵消钟差
+    clockOffsetMs: 0,
   },
   systemInfo: null,
   cloudFileUrlCache: {},
