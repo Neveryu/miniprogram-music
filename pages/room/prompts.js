@@ -1,11 +1,17 @@
 const app = getApp()
+const { checkPageToken } = require('../../utils/pageGuard.js')
 Component({
   data: {
+    bbbug: false,
     prompts: [],
     input: ''
   },
   methods: {
-    onLoad() {
+    onLoad(options) {
+      if (!checkPageToken(options)) {
+        return
+      }
+      this.setData({ bbbug: true })
       wx.setNavigationBarTitle({ title: '搜索提示词' })
       this.loadPrompts()
     },

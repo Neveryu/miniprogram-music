@@ -3,6 +3,7 @@ const app = getApp()
 const jusicWsApi = require('../../utils/jusicWsApi.js')
 const { pickChildrenKeywords } = require('../../utils/childrenKeywords.js')
 const { fillSongCovers } = require('../../utils/cover.js')
+const { showLoading, hideLoading } = require('../../utils/request.js')
 
 // 自动补歌目标数量，与云函数 song/refill 的 count 保持一致
 const REFILL_TARGET = 3
@@ -174,27 +175,7 @@ Page({
       // 游客也允许在歌曲自然播完时推进队列（song/ended 已加入游客白名单，不会弹登录框）；
       // 补歌仍仅限登录用户，见 refillPlaybackQueue 内的 userInfo 守卫
       this.setData({ autoPassSongId: songInfo._id })
-      app.request({
-        url: 'song/ended',
-        data: {
-          queue_id: songInfo._id,
-          mid: songInfo.song.mid,
-          source: songInfo.song.source
-        },
-        success: () => {
-          this.setData({ autoPassSongId: '' })
-          this.refillPlaybackQueue()
-        },
-        error: () => {
-          this.setData({ autoPassSongId: '' })
-          this.refillPlaybackQueue()
-          return true
-        },
-        fail: () => {
-          this.setData({ autoPassSongId: '' })
-          this.refillPlaybackQueue()
-        }
-      })
+      this.notifySongEnded(songInfo)
     })
     this.data.bgPlayer.onError(() => {
       if (Date.now() < this.data.playerSwitchingUntil) {
@@ -223,6 +204,11 @@ Page({
     this.data.voicePlayer.onEnded(() => this.setData({ voicePlayingId: '', voiceSource: '' }))
     this.data.voicePlayer.onError((error) => {
       console.error('[VoicePlayer]', error, this.data.voiceSource)
+      const failedSource = this.data.voiceSource
+      // 临时路径可能已失效，清除缓存以便下次点击重新下载
+      if (failedSource && this.data.voiceFileCache[failedSource]) {
+        delete this.data.voiceFileCache[failedSource]
+      }
       this.setData({ voicePlayingId: '', voiceSource: '' })
       wx.showToast({ title: '语音播放失败，请稍后重试', icon: 'none' })
     })
@@ -254,7 +240,7 @@ Page({
     }
   },
   setSimplePlayer() {
-    wx.vibrateShort()
+    wx.vibrateShort({ type: 'light' })
     this.setData({
       simplePlayer: !this.data.simplePlayer
     })
@@ -268,6 +254,8 @@ Page({
       url: 'user/getmyinfo',
       success: (res) => {
         app.saveUserInfo(res.data)
+        this.bootstrapRetryCount = 0
+        this.bootstrapRetryExhausted = false
         this.setData({
           userInfo: res.data,
           authReady: true
@@ -279,16 +267,62 @@ Page({
       },
       login: () => {
         wx.hideNavigationBarLoading()
+        this.bootstrapRetryCount = 0
+        this.bootstrapRetryExhausted = false
         app.saveUserInfo(null)
         this.setData({ userInfo: null, authReady: true })
         // 游客也加载房间信息，可浏览消息与正在播放的歌曲
         this.getRoomInfo()
       },
-      error(res) {
-        wx.hideNavigationBarLoading()
-        this.setData({ authReady: true })
+      error: () => {
+        this.handleBootstrapFailure()
+        // 由重试/Toast 统一提示，避免与错误弹窗叠加
+        return true
+      },
+      fail: () => {
+        this.handleBootstrapFailure()
       }
     })
+  },
+  // 启动阶段请求失败时释放 loading，并尽力加载游客可读的房间数据，之后定时重试身份查询
+  handleBootstrapFailure() {
+    wx.hideNavigationBarLoading()
+    this.setData({ authReady: true })
+    if (!this.data.roomInfo) {
+      this.getRoomInfo()
+    }
+    this.scheduleBootstrapRetry('myinfo')
+  },
+  // 冷启动可能遇到瞬时网络异常；最多重试 3 次，成功后退避计数由调用方清零
+  scheduleBootstrapRetry(kind) {
+    if (this.bootstrapRetryTimer || this.pageUnloaded) {
+      return
+    }
+    const count = (this.bootstrapRetryCount || 0) + 1
+    if (count > 3) {
+      if (!this.bootstrapRetryExhausted) {
+        this.bootstrapRetryExhausted = true
+        wx.showToast({ title: '网络异常，请重新进入小程序', icon: 'none' })
+      }
+      return
+    }
+    this.bootstrapRetryCount = count
+    if (count === 1) {
+      wx.showToast({ title: '网络异常，正在重试', icon: 'none' })
+    }
+    this.bootstrapRetryTimer = setTimeout(() => {
+      this.bootstrapRetryTimer = null
+      if (this.pageUnloaded) {
+        return
+      }
+      if (kind === 'room') {
+        if (!this.data.roomInfo) {
+          this.getRoomInfo()
+        }
+        return
+      }
+      this.getMyInfo(!this.data.roomInfo)
+    }, 3000)
   },
   /**
    * 获取房间信息，包括message列表
@@ -302,7 +336,8 @@ Page({
       },
       success: (res) => {
         wx.hideNavigationBarLoading()
-        wx.hideLoading()
+        this.bootstrapRetryCount = 0
+        this.bootstrapRetryExhausted = false
         // 进房时用服务端时间戳校准本机时钟（误差约一个下行延迟，秒级 seek 可忽略）
         if (res.serverTime) {
           app.globalData.clockOffsetMs = res.serverTime - Date.now()
@@ -318,8 +353,15 @@ Page({
         this.watchCloudData()
         this.refillPlaybackQueue()
       },
-      error: (res) => {
+      error: () => {
         wx.hideNavigationBarLoading()
+        this.scheduleBootstrapRetry('room')
+        // 由重试/Toast 统一提示，避免与错误弹窗叠加
+        return true
+      },
+      fail: () => {
+        wx.hideNavigationBarLoading()
+        this.scheduleBootstrapRetry('room')
       },
       login: () => {
         wx.hideNavigationBarLoading()
@@ -354,6 +396,7 @@ Page({
     }))
   },
   watchCloudData() {
+    this.watchersStopped = false
     this.closeCloudWatchers()
     const db = wx.cloud.database()
     this.data.messageWatcher = db.collection('messages').where({ room_id: 1 }).watch({
@@ -385,6 +428,8 @@ Page({
             content: welcome
           })
         }
+        // 任一 watcher 收到数据说明连接已恢复，重置退避计数
+        this.watcherRetryCount = 0
         this.resolveMessageCloudUrls(messageList).then((resolvedMessages) => {
           this.setData({ messageList: resolvedMessages })
           this.autoScroll()
@@ -394,7 +439,7 @@ Page({
           this.autoScroll()
         })
       },
-      onError: (error) => console.error('[MessageWatcher]', error)
+      onError: (error) => this.rebuildCloudWatchers(error)
     })
     this.data.roomWatcher = db.collection('rooms').where({ room_id: 1 }).watch({
       onChange: (snapshot) => {
@@ -402,11 +447,18 @@ Page({
         if (!room) {
           return
         }
-        this.setData({ roomInfo: room })
-        app.globalData.roomInfo = room
-        if (room.current_song && (!this.data.songInfo || room.current_song._id !== this.data.songInfo._id)) {
-          this.playMusic(room.current_song)
-        } else if (!room.current_song && this.data.songInfo) {
+        this.watcherRetryCount = 0
+        // 与 room/getRoomInfo 的脱敏保持一致，不把补歌锁和备用缓存写进客户端状态
+        const clientRoom = { ...room }
+        delete clientRoom._id
+        delete clientRoom.backup_songs
+        delete clientRoom.refill_lock_until
+        delete clientRoom.refill_lock_token
+        this.setData({ roomInfo: clientRoom })
+        app.globalData.roomInfo = clientRoom
+        if (clientRoom.current_song && (!this.data.songInfo || clientRoom.current_song._id !== this.data.songInfo._id)) {
+          this.playMusic(clientRoom.current_song)
+        } else if (!clientRoom.current_song && this.data.songInfo) {
           this.clearPlaybackGuard()
           this.data.bgPlayer.stop()
           this.data.resumeSongId = ''
@@ -419,10 +471,30 @@ Page({
           })
         }
       },
-      onError: (error) => console.error('[RoomWatcher]', error)
+      onError: (error) => this.rebuildCloudWatchers(error)
     })
   },
+  // watch 断线不会自动恢复，按指数退避重建（3s 起，最长 30s）；
+  // 收到任意一次数据后重置计数，避免永久性错误时每 3 秒重连一次
+  rebuildCloudWatchers(error) {
+    console.error('[CloudWatcher]', error)
+    if (this.watchersStopped) {
+      return
+    }
+    const retryCount = Number(this.watcherRetryCount) || 0
+    const delay = Math.min(3000 * Math.pow(2, retryCount), 30000)
+    this.watcherRetryCount = retryCount + 1
+    this.closeCloudWatchers()
+    this.watcherRebuildTimer = setTimeout(() => {
+      this.watcherRebuildTimer = null
+      if (!this.watchersStopped) {
+        this.watchCloudData()
+      }
+    }, delay)
+  },
   closeCloudWatchers() {
+    clearTimeout(this.watcherRebuildTimer)
+    this.watcherRebuildTimer = null
     this.data.messageWatcher && this.data.messageWatcher.close()
     this.data.roomWatcher && this.data.roomWatcher.close()
     this.data.messageWatcher = null
@@ -566,6 +638,9 @@ Page({
     const duration = Number(msg.song && msg.song.duration) || 0
     if (duration > 0) {
       seekPosition = Math.min(seekPosition, Math.max(0, Math.floor(duration / 1000) - 1))
+    } else {
+      // 时长未知（如部分音源未返回 duration）时仍做兜底封顶，避免 since 陈旧导致 seek 到超大位置
+      seekPosition = Math.min(seekPosition, 3600)
     }
     return seekPosition
   },
@@ -679,11 +754,14 @@ Page({
     this.data.refillRequestId = requestId
     this.setData({ isRefillingQueue: true })
     const finish = () => {
+      clearTimeout(this.refillFinishTimer)
+      this.refillFinishTimer = null
       if (this.data.refillRequestId === requestId) {
         this.setData({ isRefillingQueue: false })
       }
     }
-    setTimeout(finish, 18000)
+    clearTimeout(this.refillFinishTimer)
+    this.refillFinishTimer = setTimeout(finish, 18000)
     this.getQueueLengthForRefill().then((queueLength) => {
       if (this.data.refillRequestId !== requestId) {
         return
@@ -840,6 +918,47 @@ Page({
       }
     })
   },
+  // 歌曲自然播完时推进队列；传输失败多为抖动，重试 3 次仍失败再回退本地补歌
+  notifySongEnded(songInfo, attempt = 1) {
+    app.request({
+      url: 'song/ended',
+      data: {
+        queue_id: songInfo._id,
+        mid: songInfo.song.mid,
+        source: songInfo.song.source
+      },
+      success: () => {
+        this.songEndedRetryTimer = null
+        this.setData({ autoPassSongId: '' })
+        this.refillPlaybackQueue()
+      },
+      error: () => {
+        // 业务错误（如队列已变化）重试也不会成功，直接回退补歌
+        this.songEndedRetryTimer = null
+        this.setData({ autoPassSongId: '' })
+        this.refillPlaybackQueue()
+        return true
+      },
+      fail: () => {
+        if (this.pageUnloaded || !this.data.songInfo || this.data.songInfo._id !== songInfo._id) {
+          this.songEndedRetryTimer = null
+          this.setData({ autoPassSongId: '' })
+          return
+        }
+        if (attempt >= 3) {
+          this.songEndedRetryTimer = null
+          this.setData({ autoPassSongId: '' })
+          this.refillPlaybackQueue()
+          wx.showToast({ title: '播放推进失败，请手动切歌', icon: 'none' })
+          return
+        }
+        this.songEndedRetryTimer = setTimeout(() => {
+          this.songEndedRetryTimer = null
+          this.notifySongEnded(songInfo, attempt + 1)
+        }, 3000)
+      }
+    })
+  },
   // 封面图加载失败时回退本地占位图，不影响播放
   onPlayerPicError() {
     this.setData({
@@ -959,7 +1078,7 @@ Page({
       isPanelShow: false,
       isEmojiBoxShow: !this.data.isEmojiBoxShow,
     })
-    wx.vibrateShort();
+    wx.vibrateShort({ type: 'light' });
     this.setData({
       messageFocus: !this.data.isEmojiBoxShow,
       replyTarget: false
@@ -969,7 +1088,7 @@ Page({
     switch (e.mark.title) {
       case '驾驶':
         wx.navigateTo({
-          url: '../song/car-mode',
+          url: '../song/car-mode?bbbug=' + app.globalData.systemVersion,
           events: {
             destroyed: () => {
               this.setData({
@@ -1017,7 +1136,7 @@ Page({
         break
       case '提示词':
         wx.navigateTo({
-          url: '../room/prompts'
+          url: '../room/prompts?bbbug=' + app.globalData.systemVersion
         })
         break
       default:
@@ -1043,7 +1162,7 @@ Page({
       default:
         break
     }
-    wx.vibrateShort()
+    wx.vibrateShort({ type: 'light' })
     wx.showActionSheet({
       itemList: menuList,
       success: (res) => {
@@ -1074,7 +1193,9 @@ Page({
               },
               success: (res) => {
                 // not todo
-              }
+              },
+              // 重试时服务端可能已撤回成功，返回 404/409 无需再提示
+              error: () => true
             })
             break
           default:
@@ -1087,11 +1208,15 @@ Page({
     })
   },
   showMainMenu() {
-    wx.vibrateShort()
+    wx.vibrateShort({ type: 'light' })
     this.setData({
       isPanelShow: !this.data.isPanelShow,
       isEmojiBoxShow: false
     })
+  },
+  getRoomId() {
+    const room = this.data.roomInfo || app.globalData.roomInfo
+    return room && room.room_id
   },
   // 点击圆形播放器
   showSongMenu() {
@@ -1104,7 +1229,14 @@ Page({
     wx.showActionSheet({
       itemList: menu,
       success: (res) => {
-        switch (menu[res.tapIndex]) {
+        const menuName = menu[res.tapIndex]
+        // 收藏与切歌依赖房间信息，房间尚未加载时直接提示，避免空引用
+        const roomId = this.getRoomId()
+        if (roomId == null && menuName !== '关闭音乐' && menuName !== '打开音乐') {
+          wx.showToast({ title: '房间信息加载中，请稍后重试', icon: 'none' })
+          return
+        }
+        switch (menuName) {
           case '关闭音乐':
           case '打开音乐':
             if (this.data.isMusicPlaying) {
@@ -1146,7 +1278,7 @@ Page({
             app.request({
               url: 'song/addMySong',
               data: {
-                room_id: app.globalData.roomInfo.room_id,
+                room_id: roomId,
                 mid: this.data.songInfo.song.mid,
                 source: this.data.songInfo.song.source,
                 song: this.data.songInfo.song
@@ -1164,21 +1296,23 @@ Page({
               app.request({
                 url: 'song/pass',
                 data: {
-                  room_id: app.globalData.roomInfo.room_id
+                  room_id: roomId
                 },
                 loading: '加载歌曲中',
                 success: (res) => {
                   wx.showToast({
                     title: res.msg
                   })
-                }
+                },
+                // 重试时服务端可能已切歌成功，返回 409/404 无需再提示
+                error: () => true
               })
               break
             }
             app.request({
               url: 'song/pass',
               data: {
-                room_id: app.globalData.roomInfo.room_id,
+                room_id: roomId,
                 mid: this.data.songInfo.song.mid,
                 source: this.data.songInfo.song.source,
                 queue_id: this.data.songInfo._id,
@@ -1189,7 +1323,9 @@ Page({
                   title: res.msg || '切歌完成'
                 })
                 this.refillPlaybackQueue()
-              }
+              },
+              // 重试时服务端可能已切歌成功，返回 409/404 无需再提示
+              error: () => true
             })
             break
           default:
@@ -1236,37 +1372,53 @@ Page({
       wx.showToast({ title: '当前没有正在播放的歌曲', icon: 'none' })
       return
     }
+    const roomId = this.getRoomId()
+    if (roomId == null) {
+      wx.showToast({ title: '房间信息加载中，请稍后重试', icon: 'none' })
+      return
+    }
     app.request({
       url: 'song/addMySong',
       data: {
-        room_id: app.globalData.roomInfo.room_id,
+        room_id: roomId,
         mid: this.data.songInfo.song.mid,
         source: this.data.songInfo.song.source,
         song: this.data.songInfo.song
       },
       loading: '收藏中',
-      success: (res) => {
-        
+      success: () => {
+        wx.showToast({ title: '收藏成功' })
       },
       error: (res) => {
-        
+        wx.showToast({ title: res.msg || '收藏失败', icon: 'none' })
         return true
+      },
+      fail: () => {
+        wx.showToast({ title: '收藏失败，请重试', icon: 'none' })
       }
     })
   },
   longPressPassTheSong() {
+    const roomId = this.getRoomId()
+    if (roomId == null) {
+      wx.showToast({ title: '房间信息加载中，请稍后重试', icon: 'none' })
+      return
+    }
     if (!this.data.songInfo || !this.data.songInfo.song || !this.data.songInfo.user) {
       app.request({
         url: 'song/pass',
         data: {
-          room_id: app.globalData.roomInfo.room_id
+          room_id: roomId
         },
         success: (res) => {
-          
+          wx.showToast({ title: res.msg || '切歌成功', icon: 'none' })
         },
         error: (res) => {
-          
+          wx.showToast({ title: res.msg || '切歌失败', icon: 'none' })
           return true
+        },
+        fail: () => {
+          wx.showToast({ title: '切歌失败，请重试', icon: 'none' })
         }
       })
       return
@@ -1274,18 +1426,36 @@ Page({
     app.request({
       url: 'song/pass',
       data: {
-        room_id: app.globalData.roomInfo.room_id,
+        room_id: roomId,
         mid: this.data.songInfo.song.mid,
         source: this.data.songInfo.song.source,
         queue_id: this.data.songInfo._id
       },
       success: (res) => {
-        
+        wx.showToast({ title: res.msg || '切歌成功', icon: 'none' })
         this.refillPlaybackQueue()
       },
-      error: () => {
+      error: (res) => {
+        wx.showToast({ title: res.msg || '切歌失败', icon: 'none' })
         return true
+      },
+      fail: () => {
+        wx.showToast({ title: '切歌失败，请重试', icon: 'none' })
       }
+    })
+  },
+  // 发送失败或未登录时回滚乐观消息并恢复输入内容
+  rollbackPendingMessage(message, replyTarget) {
+    for (let i = this.data.messageList.length - 1; i >= 0; i--) {
+      if (this.data.messageList[i].loading) {
+        this.data.messageList.splice(i, 1)
+        break
+      }
+    }
+    this.setData({
+      message,
+      replyTarget,
+      messageList: this.data.messageList
     })
   },
   sendMessage(e) {
@@ -1303,11 +1473,18 @@ Page({
     this.setData({
       message: ''
     })
+    // 失败后重发同一段文本时复用 client_msg_id，服务端据此去重，避免传输超时但已入库造成重复消息
+    const pendingTextSend = this.pendingTextSend
+    const reuseClientMsgId = pendingTextSend && pendingTextSend.content === message
+      ? pendingTextSend.clientMsgId
+      : ''
+    const clientMsgId = reuseClientMsgId || ('local-' + Date.now() + '-' + Math.random().toString(16).slice(2))
+    this.pendingTextSend = { content: message, clientMsgId }
     let msgObj = {
       type: 'text',
       content: message,
       where: 'channel',
-      message_id: 'local-' + Date.now() + '-' + Math.random().toString(16).slice(2),
+      message_id: clientMsgId,
       message_time: 0,
       loading: true,
       resource: message,
@@ -1325,9 +1502,14 @@ Page({
         where: 'channel',
         to: this.data.room_id,
         msg: encodeURIComponent(message),
+        client_msg_id: clientMsgId,
         reply_to: replyTarget && replyTarget.message ? replyTarget.message.message_id : ''
       },
+      loginRequired: () => {
+        this.rollbackPendingMessage(message, replyTarget)
+      },
       success: (res) => {
+        this.pendingTextSend = null
         this.setData({
           replyTarget: false,
           isScrollEnabled: true,
@@ -1335,53 +1517,74 @@ Page({
         this.autoScroll()
       },
       error: (res) => {
-        for (let i = this.data.messageList.length - 1; i >= 0; i--) {
-          if (this.data.messageList[i].loading) {
-            this.data.messageList.splice(i, 1)
-            break
-          }
-        }
-        this.setData({
-          message: message,
-          replyTarget,
-          messageList: this.data.messageList
-        })
+        this.rollbackPendingMessage(message, replyTarget)
+      },
+      fail: () => {
+        this.rollbackPendingMessage(message, replyTarget)
+        wx.showToast({ title: '发送失败，请重试', icon: 'none' })
       }
+    })
+  },
+  // 仅在确认消息未写入（401/业务失败）时删除刚上传的文件；
+  // 传输失败可能是响应丢失但已入库，删除会导致消息图片失效
+  deleteCloudFile(fileId) {
+    if (!/^cloud:\/\//i.test(fileId || '')) {
+      return
+    }
+    wx.cloud.deleteFile({ fileList: [fileId] }).catch((error) => {
+      console.error('[DeleteMessageFile]', error)
     })
   },
   chooseImage() {
     const reply = this.data.replyTarget && this.data.replyTarget.message ? this.data.replyTarget.message : null
-    wx.chooseImage({
+    wx.chooseMedia({
       count: 1,
-      sizeType: 'compressed',
+      mediaType: ['image'],
+      sizeType: ['compressed'],
       success: (res) => {
         this.hideAllDialog()
-        wx.showLoading({
-          title: '发送中',
-        })
-        const cloudPath = `messages/${Date.now()}-${Math.random().toString(16).slice(2)}.jpg`
+        showLoading('发送中')
+        const tempFilePath = res.tempFiles[0].tempFilePath || ''
+        const extensionMatch = tempFilePath.match(/\.([a-zA-Z0-9]+)$/)
+        const extension = extensionMatch ? extensionMatch[1].toLowerCase() : 'jpg'
+        const cloudPath = `messages/${Date.now()}-${Math.random().toString(16).slice(2)}.${extension}`
         wx.cloud.uploadFile({
           cloudPath,
-          filePath: res.tempFilePaths[0]
+          filePath: tempFilePath
         }).then((uploadResult) => {
-          wx.hideLoading()
+          const fileId = uploadResult.fileID
           app.request({
             url: 'message/send',
             data: {
               where: 'channel',
               to: this.data.room_id,
               type: 'img',
-              msg: uploadResult.fileID,
-              resource: uploadResult.fileID,
+              msg: fileId,
+              resource: fileId,
               reply_to: reply ? reply.message_id : ''
             },
             success: () => {
+              hideLoading()
               this.setData({ replyTarget: false })
               this.hideAllDialog()
+            },
+            loginRequired: () => {
+              hideLoading()
+              this.deleteCloudFile(fileId)
+            },
+            error: (response) => {
+              hideLoading()
+              this.deleteCloudFile(fileId)
+              wx.showToast({ title: response.msg || '图片发送失败', icon: 'none' })
+              return true
+            },
+            fail: () => {
+              hideLoading()
+              wx.showToast({ title: '图片发送失败，请重试', icon: 'none' })
             }
           })
         }).catch((error) => {
-          wx.hideLoading()
+          hideLoading()
           console.error('[UploadMessageImage]', error)
           wx.showToast({
             title: '图片上传失败',
@@ -1427,24 +1630,41 @@ Page({
       wx.showToast({ title: '说话时间太短', icon: 'none' })
       return
     }
-    wx.showLoading({ title: '发送中' })
+    showLoading('发送中')
     const cloudPath = `messages/voice/${Date.now()}-${Math.random().toString(16).slice(2)}.mp3`
     wx.cloud.uploadFile({ cloudPath, filePath: result.tempFilePath }).then((uploadResult) => {
-      wx.hideLoading()
+      const fileId = uploadResult.fileID
       const reply = this.data.replyTarget && this.data.replyTarget.message ? this.data.replyTarget.message : null
       app.request({
         url: 'message/send',
         data: {
           type: 'voice',
-          msg: uploadResult.fileID,
-          resource: uploadResult.fileID,
+          msg: fileId,
+          resource: fileId,
           duration: result.duration,
           reply_to: reply ? reply.message_id : ''
         },
-        success: () => this.setData({ replyTarget: false })
+        success: () => {
+          hideLoading()
+          this.setData({ replyTarget: false })
+        },
+        loginRequired: () => {
+          hideLoading()
+          this.deleteCloudFile(fileId)
+        },
+        error: (response) => {
+          hideLoading()
+          this.deleteCloudFile(fileId)
+          wx.showToast({ title: response.msg || '语音发送失败', icon: 'none' })
+          return true
+        },
+        fail: () => {
+          hideLoading()
+          wx.showToast({ title: '语音发送失败，请重试', icon: 'none' })
+        }
       })
     }).catch((error) => {
-      wx.hideLoading()
+      hideLoading()
       console.error('[UploadVoice]', error)
       wx.showToast({ title: '语音上传失败', icon: 'none' })
     })
@@ -1463,7 +1683,13 @@ Page({
       if (!result.tempFilePath) {
         throw new Error('语音文件下载失败')
       }
-      this.data.voiceFileCache[source] = result.tempFilePath
+      const cache = this.data.voiceFileCache
+      const cachedKeys = Object.keys(cache)
+      // 缓存上限 20，避免长时间聊天后临时路径无限堆积
+      if (cachedKeys.length >= 20) {
+        delete cache[cachedKeys[0]]
+      }
+      cache[source] = result.tempFilePath
       return result.tempFilePath
     })
   },
@@ -1507,11 +1733,19 @@ Page({
     })
   },
   onUnload() {
+    this.pageUnloaded = true
+    clearTimeout(this.bootstrapRetryTimer)
+    this.bootstrapRetryTimer = null
+    clearTimeout(this.songEndedRetryTimer)
+    this.songEndedRetryTimer = null
     if (this.offLogin) {
       this.offLogin()
     }
+    this.watchersStopped = true
     clearTimeout(this.refillRetryTimer)
     this.refillRetryTimer = null
+    clearTimeout(this.refillFinishTimer)
+    this.refillFinishTimer = null
     this.clearPlaybackGuard()
     this.closeCloudWatchers()
     if (this.data.isRecording && this.data.recorderManager) {

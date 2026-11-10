@@ -140,8 +140,7 @@ Page({
     badge: 'PRIVACY POLICY',
     version: 'V1.2 · 2026年9月生效',
     intro: '',
-    sections: [],
-    readAtBottom: false
+    sections: []
   },
   onLoad(options) {
     const type = options.type === 'service' ? 'service' : 'privacy'
@@ -158,11 +157,6 @@ Page({
     wx.setNavigationBarTitle({
       title: isPrivacy ? '隐私政策' : '用户服务协议'
     })
-  },
-  onPageScroll(e) {
-    if (!this.data.readAtBottom && e.scrollTop > 600) {
-      this.setData({ readAtBottom: true })
-    }
   },
   onUnload() {
     const pages = getCurrentPages()

@@ -1,6 +1,8 @@
 const app = getApp()
 const jusicWsApi = require('../../utils/jusicWsApi.js')
 const { fillSongCovers } = require('../../utils/cover.js')
+const { showLoading, hideLoading } = require('../../utils/request.js')
+const { checkPageToken, getRoomId } = require('../../utils/pageGuard.js')
 
 const decodeOption = (value, fallback = '') => {
   try {
@@ -27,7 +29,7 @@ Component({
 
   methods: {
     onLoad(options) {
-      if (!options.bbbug || options.bbbug != app.globalData.systemVersion || !options.id) {
+      if (!checkPageToken(options, true)) {
         return
       }
       const source = options.source === 'qq' || options.source === 'tencent' ? 'tencent' : 'netease'
@@ -60,7 +62,10 @@ Component({
         this._detailRequest.cancel()
       }
       this.setData({ isLoading: true })
-      wx.showLoading({ title: '加载中', mask: true })
+      if (!this._detailLoading) {
+        this._detailLoading = true
+        showLoading('加载中')
+      }
       const detailOptions = {
         page,
         pageSize,
@@ -96,8 +101,8 @@ Component({
       }).then(() => {
         if (requestId === this._detailRequestId) {
           this._detailRequest = null
+          this.releaseDetailLoading()
           this.setData({ isLoading: false })
-          wx.hideLoading()
         }
       })
     },
@@ -109,13 +114,20 @@ Component({
       }
     },
 
+    releaseDetailLoading() {
+      if (this._detailLoading) {
+        this._detailLoading = false
+        hideLoading()
+      }
+    },
+
     onUnload() {
       if (this._detailRequest && typeof this._detailRequest.cancel === 'function') {
         this._detailRequest.cancel()
       }
       this._detailRequest = null
       this._detailRequestId = (this._detailRequestId || 0) + 1
-      wx.hideLoading()
+      this.releaseDetailLoading()
     },
 
     onPlaylistPicError() {
@@ -162,17 +174,19 @@ Component({
 
     // 点歌/播放前通过 WS /music/pick 获取播放直链
     resolvePickedSong(song) {
-      wx.showLoading({ title: '准备中', mask: true })
+      showLoading('准备中')
       return jusicWsApi.ensurePlayableSong(song).then(pickedSong => {
-        wx.hideLoading()
+        hideLoading()
         return pickedSong
       }).catch(error => {
-        wx.hideLoading()
+        hideLoading()
         throw error
       })
     },
 
     addSong(song) {
+      const roomId = getRoomId()
+      if (roomId == null) return
       this.resolvePickedSong(song).then(pickedSong => {
         app.request({
           url: 'song/addSong',
@@ -181,7 +195,7 @@ Component({
             mid: pickedSong.mid,
             source: pickedSong.source,
             song: pickedSong,
-            room_id: app.globalData.roomInfo.room_id
+            room_id: roomId
           },
           success: () => wx.showToast({ title: '点歌成功' })
         })
@@ -191,6 +205,8 @@ Component({
     },
 
     addFavorite(song) {
+      const roomId = getRoomId()
+      if (roomId == null) return
       app.request({
         url: 'song/addMySong',
         loading: '收藏中',
@@ -198,13 +214,15 @@ Component({
           mid: song.mid,
           source: song.source,
           song,
-          room_id: app.globalData.roomInfo.room_id
+          room_id: roomId
         },
         success: () => wx.showToast({ title: '收藏成功' })
       })
     },
 
     playSong(song) {
+      const roomId = getRoomId()
+      if (roomId == null) return
       this.resolvePickedSong(song).then(pickedSong => {
         app.request({
           url: 'song/playSong',
@@ -213,7 +231,7 @@ Component({
             mid: pickedSong.mid,
             source: pickedSong.source,
             song: pickedSong,
-            room_id: app.globalData.roomInfo.room_id
+            room_id: roomId
           },
           success: () => wx.showToast({ title: '播放成功' })
         })

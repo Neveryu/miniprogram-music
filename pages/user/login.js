@@ -19,6 +19,10 @@ Page({
     })
     this.loadPrivacySetting()
   },
+  onUnload() {
+    clearTimeout(this.consentShakeTimer)
+    this.consentShakeTimer = null
+  },
   // 查询微信侧隐私授权状态，仅用于提示；授权由 chooseAvatar 触发官方弹窗完成
   loadPrivacySetting() {
     if (typeof wx.getPrivacySetting !== 'function') {
@@ -50,7 +54,9 @@ Page({
       return
     }
     this.setData({ consentShake: true })
-    setTimeout(() => {
+    clearTimeout(this.consentShakeTimer)
+    this.consentShakeTimer = setTimeout(() => {
+      this.consentShakeTimer = null
       this.setData({ consentShake: false })
     }, 900)
   },
@@ -132,6 +138,14 @@ Page({
           eventChannel.emit('loginSuccess', loginRes.data)
         }
         wx.navigateBack()
+      },
+      loginRequired: () => {
+        // 登录接口返回 401 时不会进入 error，需自行释放 loading，避免按钮一直不可点
+        wx.hideLoading()
+        this.setData({
+          isLoggingIn: false
+        })
+        wx.showToast({ title: '身份验证失败，请重新登录', icon: 'none' })
       },
       error: (res) => {
         wx.hideLoading()

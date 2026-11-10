@@ -1,4 +1,3 @@
-<!-- <wxs src="../../utils/helper.wxs" module="helper" /> -->
 <view wx:if="{{bbbug}}">
   <!-- 分类筛选：我的歌曲 / 儿歌，两者互斥 -->
   <view class="filter-bar">

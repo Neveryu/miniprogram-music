@@ -46,7 +46,7 @@
 
 <!-- 点击右下脚加号的弹出框 -->
 <view class="bbbug_emoji {{isEmojiBoxShow?'animationSlideIn':'animationSlideOut'}}">
-  <image wx:for="{{imageList}}" wx:key="index" src="{{item}}" mode="widthFix" bindtap="sendEmoji"
+  <image wx:for="{{imageList}}" wx:key="*this" src="{{item}}" mode="widthFix" bindtap="sendEmoji"
     mark:url="{{item}}" style="height:{{isSystemEmoji?'auto':'80px'}}"></image>
   <view wx:if="{{imageList.length>0}}" class="bbbug_upload" bindtap="chooseImage">发送图片</view>
   <view wx:if="{{imageList.length==0}}">暂无可用表情</view>

@@ -1,6 +1,7 @@
 const app = getApp();
 const jusicWsApi = require('../../utils/jusicWsApi.js')
 const { fillSongCovers } = require('../../utils/cover.js')
+const { checkPageToken, getRoomId } = require('../../utils/pageGuard.js')
 Component({
   /**
    * 组件的属性列表
@@ -24,7 +25,7 @@ Component({
    */
   methods: {
     onLoad(options) {
-      if (!options.bbbug || options.bbbug != app.globalData.systemVersion) {
+      if (!checkPageToken(options)) {
         return
       }
       this.setData({
@@ -47,11 +48,14 @@ Component({
       if (this.offLogin) {
         this.offLogin()
       }
+      // 使在途请求与封面回调失效，避免卸载后 setData
+      this._listRequestId = (this._listRequestId || 0) + 1
     },
     onPullDownRefresh() {
       this.data.page = 1
       this.data.hasMore = true
-      this.getSongList()
+      // 下拉刷新必须发起新请求，不能因在途请求而直接返回
+      this.getSongList(true)
       wx.stopPullDownRefresh()
     },
     // 封面图加载失败时回退本地占位图
@@ -96,6 +100,10 @@ Component({
           source: song.source,
           children: nextChildren
         },
+        // 401 时 request.js 不会回调 error/fail，需在此解除操作锁
+        loginRequired: () => {
+          this.data.marking = false
+        },
         success: () => {
           this.data.marking = false
           wx.showToast({
@@ -124,10 +132,13 @@ Component({
         }
       })
     },
-    getSongList() {
-      if (this.data.isLoading) {
+    getSongList(force = false) {
+      if (this.data.isLoading && !force) {
         return
       }
+      // 请求序号保证下拉刷新后，旧请求的结果不会覆盖新列表
+      const requestId = (this._listRequestId || 0) + 1
+      this._listRequestId = requestId
       this.data.isLoading = true
       app.request({
         url: 'song/mySongList',
@@ -138,27 +149,38 @@ Component({
         },
         // 游客收到 401 时解除加载锁，取消登录后仍可下拉刷新重试
         loginRequired: () => {
-          this.data.isLoading = false
+          if (requestId === this._listRequestId) {
+            this.data.isLoading = false
+          }
         },
         success: (res) => {
+          if (requestId !== this._listRequestId) return
           let songList = this.data.songList
           if (this.data.page == 1) {
             songList = []
           }
           songList = songList.concat(res.data || [])
-          this.data.hasMore = (res.data || []).length >= 30
+          // 服务端多取一条判断分页，避免损坏记录被跳过时提前结束列表
+          this.data.hasMore = res.hasMore === true
           this.setData({
             songList: songList
           })
           this.data.isLoading = false
-          const filter = this.data.filter
           fillSongCovers(songList).then((songs) => {
-            if (this.data.filter === filter) {
+            if (requestId === this._listRequestId) {
               this.setData({ songList: songs.slice() })
             }
           })
         },
         error: () => {
+          if (requestId !== this._listRequestId) return
+          if (this.data.page > 1) {
+            this.data.page--
+          }
+          this.data.isLoading = false
+        },
+        fail: () => {
+          if (requestId !== this._listRequestId) return
           if (this.data.page > 1) {
             this.data.page--
           }
@@ -180,7 +202,9 @@ Component({
         itemList: menu,
         success: (res) => {
           switch (menu[res.tapIndex]) {
-            case '点歌':
+            case '点歌': {
+              const roomId = getRoomId()
+              if (roomId == null) break
               this.resolvePickedSong(song).then((pickedSong) => {
                 app.request({
                   url: 'song/addSong',
@@ -189,7 +213,7 @@ Component({
                     mid: pickedSong.mid,
                     source: pickedSong.source,
                     song: pickedSong,
-                    room_id: app.globalData.roomInfo.room_id
+                    room_id: roomId
                   },
                   success: (res) => {
                     // this.getSongList()
@@ -202,14 +226,17 @@ Component({
                 wx.showToast({ title: error.message || '点歌失败', icon: 'none' })
               })
               break
-            case '移除':
+            }
+            case '移除': {
+              const roomId = getRoomId()
+              if (roomId == null) break
               app.request({
                 url: 'song/deleteMySong',
                 loading: '移除中',
                 data: {
                   mid: song.mid,
                   source: song.source,
-                  room_id: app.globalData.roomInfo.room_id
+                  room_id: roomId
                 },
                 success: (res) => {
                   this.data.page = 1
@@ -220,7 +247,10 @@ Component({
                 }
               })
               break
-            case '播放':
+            }
+            case '播放': {
+              const roomId = getRoomId()
+              if (roomId == null) break
               this.resolvePickedSong(song).then((pickedSong) => {
                 app.request({
                   url: 'song/playSong',
@@ -228,7 +258,7 @@ Component({
                     mid: pickedSong.mid,
                     source: pickedSong.source,
                     song: pickedSong,
-                    room_id: app.globalData.roomInfo.room_id
+                    room_id: roomId
                   },
                   loading: '播放中',
                   success: (res) => {
@@ -243,6 +273,7 @@ Component({
                 wx.showToast({ title: error.message || '播放失败', icon: 'none' })
               })
               break
+            }
             default:
               break
           }

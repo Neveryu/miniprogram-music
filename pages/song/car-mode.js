@@ -1,5 +1,6 @@
 // pages/song/car-mode.js
 const app = getApp()
+const { checkPageToken } = require('../../utils/pageGuard.js')
 Component({
   /**
    * 组件的属性列表
@@ -9,6 +10,7 @@ Component({
    * 组件的初始数据
    */
   data: {
+    bbbug: false,
     top: '80rpx',
     songInfo: null,
     lrcString: '',
@@ -33,7 +35,12 @@ Component({
    * 组件的方法列表
    */
   methods: {
-    onLoad() {
+    onLoad(options) {
+      // 驾驶模式依赖首页通过 EventChannel 下发数据，直接打开/恢复旧页面只会白屏
+      if (!checkPageToken(options)) {
+        return
+      }
+      this.setData({ bbbug: true })
       // 歌词区域当前的实际滚动位置（不触发渲染）
       this.lrcScrollOffset = 0
       this.data.eventChannel = this.getOpenerEventChannel()
@@ -101,6 +108,10 @@ Component({
         clearTimeout(this.favBurstTimer)
         this.favBurstTimer = null
       }
+      // 手势返回与顶部返回都会触发卸载，统一在此通知首页清理事件通道
+      if (this.data.eventChannel) {
+        this.data.eventChannel.emit('destroyed')
+      }
     },
     // 上滑切歌手势：页面不动，小车向前顶进（透视缩小）模拟前行
     onTouchStart(e) {
@@ -151,7 +162,8 @@ Component({
         swiping: false,
         passReady: false
       })
-      if (triggered) {
+      // 驶离/驶入动画期间不再触发切歌，避免连续上滑重复请求
+      if (triggered && !this.data.carLeaving && !this.data.carEntering) {
         wx.vibrateShort({ type: 'medium' })
         this.showPassToast()
         this.carDriveAway()
@@ -215,6 +227,11 @@ Component({
     },
     // 点击封面收藏：触发爱心点亮动画 + 上报收藏
     onTapFav() {
+      // 心形动画期间忽略重复点击，避免连续发起收藏请求
+      if (this.favBusy) {
+        return
+      }
+      this.favBusy = true
       if (this.favBurstTimer) {
         clearTimeout(this.favBurstTimer)
       }
@@ -231,6 +248,7 @@ Component({
             favBurst: false
           })
           this.favBurstTimer = null
+          this.favBusy = false
         }, 1000)
       })
       wx.vibrateShort({ type: 'light' })
@@ -242,15 +260,9 @@ Component({
         picError: true
       })
     },
-    tapToAddSong() {
-      this.data.eventChannel.emit('tapToAddSong')
-    },
     backCar() {
       wx.navigateBack({
-        delta: 1,
-        success: () => {
-          this.data.eventChannel.emit('destroyed')
-        }
+        delta: 1
       })
     }
   }

@@ -1,5 +1,7 @@
 const app = getApp()
 const jusicWsApi = require('../../utils/jusicWsApi.js')
+const { showLoading, hideLoading } = require('../../utils/request.js')
+const { checkPageToken, getRoomId } = require('../../utils/pageGuard.js')
 
 // 内置精选儿歌曲库：点击后按关键词从网易云搜索取第一首点播
 const CATEGORIES = [
@@ -183,9 +185,10 @@ Component({
    */
   methods: {
     onLoad(options) {
-      if (!options.bbbug || options.bbbug != app.globalData.systemVersion) {
+      if (!checkPageToken(options)) {
         return
       }
+      this.unloaded = false
       this.setData({
         bbbug: true
       })
@@ -193,6 +196,15 @@ Component({
         title: '儿歌乐园'
       })
       this.loadRoomMode()
+    },
+    onUnload() {
+      this.unloaded = true
+      clearTimeout(this.navigateBackTimer)
+      this.navigateBackTimer = null
+      if (this.loadingShown) {
+        this.loadingShown = false
+        hideLoading()
+      }
     },
     // 读取房间儿歌模式状态，初始化按钮显示
     loadRoomMode() {
@@ -225,6 +237,13 @@ Component({
         url: 'room/setChildrenMode',
         loading: next ? '正在开启' : '正在关闭',
         data: { enabled: next },
+        // 401 时解除按钮锁，取消登录后仍可重试
+        loginRequired: () => {
+          this.data.toggling = false
+          if (!this.unloaded) {
+            this.setData({ toggling: false })
+          }
+        },
         success: (res) => {
           // 仅当云函数明确返回 has_song=false 时才需要客户端兜底搜索
           const hasSong = !(res.data && res.data.has_song === false)
@@ -241,8 +260,14 @@ Component({
             // 通知首页在返回后按正常模式重新补歌
             app.globalData.needRefillAfterChildrenExit = true
           }
-          // 开启和关闭都回到首页，保持交互一致
-          setTimeout(() => wx.navigateBack(), 800)
+          // 开启和关闭都回到首页，保持交互一致；页面已退出时不再重复返回
+          clearTimeout(this.navigateBackTimer)
+          this.navigateBackTimer = setTimeout(() => {
+            this.navigateBackTimer = null
+            if (!this.unloaded) {
+              wx.navigateBack()
+            }
+          }, 800)
         },
         error: (response) => {
           this.setData({ toggling: false })
@@ -285,11 +310,11 @@ Component({
       if (this.data.requesting) {
         return
       }
+      const roomId = getRoomId()
+      if (roomId == null) return
       this.setData({ requesting: true })
-      wx.showLoading({
-        title: '找歌中',
-        mask: true
-      })
+      this.loadingShown = true
+      showLoading('找歌中')
       jusicWsApi.searchNeteaseSongs(song.keyword, { pageSize: 10 }).then(result => {
         const found = (result.list || [])[0]
         if (!found || !found.mid) {
@@ -304,7 +329,10 @@ Component({
               mid: pickedSong.mid,
               source: pickedSong.source,
               song: pickedSong,
-              room_id: app.globalData.roomInfo.room_id
+              room_id: roomId
+            },
+            loginRequired: () => {
+              this.finishRequest()
             },
             success: () => {
               this.finishRequest()
@@ -331,6 +359,8 @@ Component({
     },
     // 开启儿歌模式后没有儿歌收藏时的首曲兜底：WS 搜索并立即播放
     playFirstChildrenSong() {
+      const roomId = getRoomId()
+      if (roomId == null) return
       jusicWsApi.searchNeteaseSongs('儿歌', { pageSize: 10 }).then(result => {
         const found = (result.list || [])[0]
         if (!found || !found.mid) {
@@ -343,7 +373,7 @@ Component({
               mid: pickedSong.mid,
               source: pickedSong.source,
               song: pickedSong,
-              room_id: app.globalData.roomInfo.room_id
+              room_id: roomId
             },
             success: resolve,
             error: () => {
@@ -356,8 +386,15 @@ Component({
       }).catch(() => {})
     },
     finishRequest() {
-      wx.hideLoading()
-      this.setData({ requesting: false })
+      // 页面已卸载时仍需关闭全局遮罩，只是不再 setData
+      if (this.loadingShown) {
+        this.loadingShown = false
+        hideLoading()
+      }
+      this.data.requesting = false
+      if (!this.unloaded) {
+        this.setData({ requesting: false })
+      }
     }
   }
 })

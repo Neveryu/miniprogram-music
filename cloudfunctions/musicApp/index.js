@@ -20,8 +20,10 @@ const AGREEMENT_VERSIONS = ['V1.2']
 const REFILL_SOURCE_WEIGHTS = { favorite: 5, cache: 3, prompt: 2 }
 // 儿歌模式补歌权重：儿歌收藏（用户精选）占主导，云端儿歌词池补充新鲜度
 const CHILDREN_REFILL_WEIGHTS = { favorite: 3, children: 2 }
-// 播放队列硬上限，与客户端、查询语句保持一致
+// 播放队列硬上限，与客户端一致
 const MAX_QUEUE_SIZE = 100
+// 读取上限高于硬上限，保证历史并发溢出产生的队列行仍可见、可清理
+const QUEUE_READ_LIMIT = MAX_QUEUE_SIZE * 2
 // 只接受已知音乐 CDN 的播放直链，避免客户端伪造任意外部音频地址
 const TRUSTED_AUDIO_DOMAINS = ['music.126.net', '126.net', 'music.163.com', '163.com', 'qqmusic.qq.com', 'gtimg.cn', 'qq.com']
 // 游客（未登录）可访问的只读接口：房间、提示词、消息、队列、歌词与封面；
@@ -47,6 +49,9 @@ const AUTO_SONG_USER = {
 
 const success = (data, msg = '操作成功') => ({ code: 200, msg, data })
 const failure = (msg, code = 500, data = null) => ({ code, msg, data })
+
+// 聊天媒体统一存放在 messages/ 下；撤回时也只清理该目录，避免误删头像等其他云文件
+const isMessageMediaFile = (value) => /^cloud:\/\/[^/]+\/messages\//i.test(String(value || ''))
 
 const normalizeMusicSource = (source) => MUSIC_SOURCES.includes(source) ? source : 'netease'
 
@@ -81,6 +86,14 @@ const isDirectAudioUrl = value => isUsableAudioUrl(value)
 // 网易云官方歌词接口，短时缓存避免重复请求
 const LYRIC_CACHE_TTL = 30 * 60 * 1000
 const lyricCache = new Map()
+// 云函数实例常驻，缓存需要上限，避免热实例内存持续增长
+const trimCache = (cache, maxSize) => {
+  while (cache.size > maxSize) {
+    cache.delete(cache.keys().next().value)
+  }
+}
+const LYRIC_CACHE_MAX = 200
+const COVER_CACHE_MAX = 500
 
 // 网易云官方接口请求：歌词和封面补全都复用同一套请求头
 const NETEASE_REQUEST_HEADERS = {
@@ -91,10 +104,23 @@ const NETEASE_REQUEST_HEADERS = {
 }
 
 const requestNeteaseJson = (requestUrl, timeout = 2500) => new Promise((resolve, reject) => {
-  const request = https.get(requestUrl, { headers: NETEASE_REQUEST_HEADERS }, (response) => {
+  let finished = false
+  let req = null
+  const done = (fn, value) => {
+    if (finished) return
+    finished = true
+    clearTimeout(deadlineTimer)
+    fn(value)
+  }
+  // 总时长兜底：socket 空闲超时挡不住慢速响应，避免拖到云函数整体超时
+  const deadlineTimer = setTimeout(() => {
+    req && req.destroy()
+    done(reject, new Error('网易云接口请求超时'))
+  }, timeout + 1000)
+  req = https.get(requestUrl, { headers: NETEASE_REQUEST_HEADERS }, (response) => {
     if (response.statusCode < 200 || response.statusCode >= 300) {
       response.resume()
-      reject(new Error(`网易云接口返回 HTTP ${response.statusCode}`))
+      done(reject, new Error(`网易云接口返回 HTTP ${response.statusCode}`))
       return
     }
     let body = ''
@@ -104,14 +130,14 @@ const requestNeteaseJson = (requestUrl, timeout = 2500) => new Promise((resolve,
     })
     response.on('end', () => {
       try {
-        resolve(JSON.parse(body))
+        done(resolve, JSON.parse(body))
       } catch (error) {
-        reject(new Error('网易云接口返回格式无效'))
+        done(reject, new Error('网易云接口返回格式无效'))
       }
     })
   })
-  request.setTimeout(timeout, () => request.destroy(new Error('网易云接口请求超时')))
-  request.on('error', reject)
+  req.setTimeout(timeout, () => req.destroy(new Error('网易云接口请求超时')))
+  req.on('error', (error) => done(reject, error))
 })
 
 const requestNeteaseLyric = (mid) => requestNeteaseJson(
@@ -131,6 +157,7 @@ const getNeteaseLyric = async (mid) => {
   const text = await requestNeteaseLyric(key)
   const lines = parseLyrics(text)
   lyricCache.set(key, { lines, ts: Date.now() })
+  trimCache(lyricCache, LYRIC_CACHE_MAX)
   return lines
 }
 
@@ -196,6 +223,7 @@ const getNeteaseCovers = async (mids) => {
       coverCache.set(mid, { pic: '', ts: Date.now() })
     }
   })
+  trimCache(coverCache, COVER_CACHE_MAX)
   return result
 }
 
@@ -232,6 +260,8 @@ const validateSong = (song) => {
     album: String(song.album || ''),
     pic: source === 'kugou' ? '' : String(song.pic || ''),
     url,
+    // 客户端进房/重连时按歌曲时长封顶 seek，缺失会导致偏移越界
+    duration: Math.max(0, Number(song.duration) || 0),
     lrc: []
   }
 }
@@ -389,13 +419,25 @@ const healCurrentSong = async (room) => {
     .get()
   const head = headResult.data[0]
   const next = head ? { ...head, since: Math.floor(Date.now() / 1000) } : null
-  await db.collection('rooms').doc(room._id).update({
+  // 仅在指针仍是那条悬空记录时写回，避免覆盖并发刚写入的新指针
+  const healed = await db.collection('rooms').where({
+    _id: room._id,
+    'current_song._id': currentId
+  }).update({
     data: {
       current_song: _.set(next),
       updated_at: db.serverDate()
     }
   }).catch(() => null)
-  room.current_song = next
+  if (healed && healed.stats && healed.stats.updated) {
+    room.current_song = next
+  } else {
+    // CAS 未命中说明指针已被并发修改，重新读取最新值，避免把旧悬空指针返回给调用方
+    const latest = await db.collection('rooms').doc(room._id).get().catch(() => null)
+    if (latest && latest.data) {
+      room.current_song = latest.data.current_song || null
+    }
+  }
   return room
 }
 
@@ -507,12 +549,23 @@ const sendMessage = async (payload, user) => {
   if (plainContent.length > 1000) {
     return failure('消息内容长度应为 1 到 1000 个字符', 422)
   }
+  // 文本重发时客户端会复用同一 client_msg_id：传输超时但服务端已入库的情况下避免重复消息
+  const clientMsgId = type === 'text' ? String(payload.client_msg_id || '').trim().slice(0, 64) : ''
+  if (clientMsgId) {
+    const existed = await db.collection('messages')
+      .where({ _openid: user._openid, room_id: DEFAULT_ROOM_ID, client_msg_id: clientMsgId })
+      .limit(1)
+      .get()
+    if (existed.data.length) {
+      return success({ ...(existed.data[0].payload || {}), message_id: existed.data[0]._id }, '发送成功')
+    }
+  }
   if (type === 'text' && !(await checkTextSecurity(plainContent, user._openid))) {
     return failure('消息包含敏感内容，请修改后重试', 422)
   }
   const isBundledEmoji = type === 'img' && /^\/res\/Emojis\//.test(content)
-  if ((type === 'img' || type === 'voice') && !/^cloud:\/\//i.test(content) && !isBundledEmoji) {
-    return failure('消息文件必须使用云存储地址', 422)
+  if ((type === 'img' || type === 'voice') && !isMessageMediaFile(content) && !isBundledEmoji) {
+    return failure('消息文件必须使用消息目录下的云存储地址', 422)
   }
   const duration = type === 'voice' ? Math.min(Math.max(Number(payload.duration) || 0, 1), 60000) : 0
   let reply = null
@@ -542,33 +595,52 @@ const sendMessage = async (payload, user) => {
   const message = {
     type,
     content,
-    resource: String(payload.resource || content),
+    // 媒体消息的 resource 由服务端以校验过的 content 为准，避免客户端塞入其他文件引用后被撤回清理
+    resource: type === 'text' ? String(payload.resource || content) : content,
     duration,
     reply,
     user: toClientUser(user),
     room_id: DEFAULT_ROOM_ID,
     message_time: Math.floor(Date.now() / 1000)
   }
-  const created = await db.collection('messages').add({
-    data: {
-      _openid: user._openid,
-      room_id: DEFAULT_ROOM_ID,
-      payload: message,
-      created_timestamp: message.message_time,
-      created_at: db.serverDate()
-    }
-  })
+  const messageDoc = {
+    _openid: user._openid,
+    room_id: DEFAULT_ROOM_ID,
+    payload: message,
+    created_timestamp: message.message_time,
+    created_at: db.serverDate()
+  }
+  if (clientMsgId) {
+    messageDoc.client_msg_id = clientMsgId
+  }
+  const created = await db.collection('messages').add({ data: messageDoc })
   return success({ ...message, message_id: created._id }, '发送成功')
 }
 
 const getMessageList = async (payload) => {
-  const limit = Math.min(Number(payload.per_page) || 20, 100)
+  const limit = Math.min(Math.max(Number(payload.per_page) || 20, 1), 100)
   const result = await db.collection('messages')
     .where({ room_id: DEFAULT_ROOM_ID })
     .orderBy('created_timestamp', 'desc')
     .limit(limit)
     .get()
   return success(result.data.map(normalizeMessage))
+}
+
+// 撤回时只有确认没有其他消息引用该文件才删除，防止伪造引用后撤回删除他人媒体
+const isMediaReferencedElsewhere = async (fileId, messageId) => {
+  try {
+    // 按文件引用查询后排除当前消息，避免依赖 _id 的不等操作符
+    const [byContent, byResource] = await Promise.all([
+      db.collection('messages').where({ 'payload.content': fileId }).limit(2).get(),
+      db.collection('messages').where({ 'payload.resource': fileId }).limit(2).get()
+    ])
+    return byContent.data.some((doc) => String(doc._id) !== String(messageId))
+      || byResource.data.some((doc) => String(doc._id) !== String(messageId))
+  } catch (error) {
+    // 查询失败时保守处理，跳过文件删除
+    return true
+  }
 }
 
 const recallMessage = async (payload, user) => {
@@ -585,6 +657,16 @@ const recallMessage = async (payload, user) => {
     return failure('无权撤回该消息', 403)
   }
   await db.collection('messages').doc(payload.message_id).remove()
+  // 撤回后消息正文不再展示，顺带清理该消息的云存储图片/语音，避免长期占用空间。
+  // 只处理 img/voice 且位于 messages/ 下的文件，并确认没有其他消息引用，
+  // 防止构造消息引用他人媒体后撤回导致误删（文本消息的 resource 不参与清理）
+  const messagePayload = message.payload || {}
+  const mediaFile = (messagePayload.type === 'img' || messagePayload.type === 'voice')
+    ? [messagePayload.content, messagePayload.resource].find((item) => isMessageMediaFile(item))
+    : ''
+  if (mediaFile && !(await isMediaReferencedElsewhere(mediaFile, payload.message_id))) {
+    await cloud.deleteFile({ fileList: [mediaFile] }).catch(() => null)
+  }
   return success(null, '撤回成功')
 }
 
@@ -592,15 +674,23 @@ const addFavorite = async (payload, user) => {
   const song = validateSong(payload.song || { source: payload.source, mid: payload.mid, name: payload.name })
   const exists = await db.collection('playlists').where({ _openid: user._openid, source: song.source, mid: song.mid }).limit(1).get()
   if (!exists.data.length) {
-    await db.collection('playlists').add({
-      data: {
-        _openid: user._openid,
-        source: song.source,
-        mid: song.mid,
-        song,
-        created_at: db.serverDate()
+    try {
+      await db.collection('playlists').add({
+        data: {
+          _openid: user._openid,
+          source: song.source,
+          mid: song.mid,
+          song,
+          created_at: db.serverDate()
+        }
+      })
+    } catch (error) {
+      // 并发收藏可能同时通过存在性检查，唯一索引拒绝后只要确认已存在即视为成功
+      const recheck = await db.collection('playlists').where({ _openid: user._openid, source: song.source, mid: song.mid }).limit(1).get()
+      if (!recheck.data.length) {
+        throw error
       }
-    })
+    }
   }
   return success(null, '收藏成功')
 }
@@ -615,9 +705,10 @@ const favoriteList = async (payload, user) => {
   } else {
     where.children = _.neq(true)
   }
-  const result = await db.collection('playlists').where(where).orderBy('created_at', 'desc').skip((page - 1) * pageSize).limit(pageSize).get()
+  // 多取一条用于判断是否还有下一页，避免损坏记录被跳过时提前判定列表结束
+  const result = await db.collection('playlists').where(where).orderBy('created_at', 'desc').skip((page - 1) * pageSize).limit(pageSize + 1).get()
   // 单条历史收藏损坏时只跳过该条，避免整个收藏页加载失败
-  return success(result.data.map((item) => {
+  const songs = result.data.slice(0, pageSize).map((item) => {
     try {
       return {
         ...validateSong(item.song),
@@ -627,13 +718,21 @@ const favoriteList = async (payload, user) => {
     } catch (error) {
       return null
     }
-  }).filter(Boolean))
+  }).filter(Boolean)
+  return { ...success(songs), hasMore: result.data.length > pageSize }
 }
 
 // 收藏页：将收藏歌曲标记为儿歌或移出儿歌
 const toggleFavoriteChildren = async (payload, user) => {
+  if (!payload.mid) {
+    return failure('缺少歌曲标识', 422)
+  }
   const source = normalizeMusicSource(payload.source)
-  const result = await db.collection('playlists').where({ _openid: user._openid, mid: payload.mid }).get()
+  const result = await db.collection('playlists').where({
+    _openid: user._openid,
+    mid: String(payload.mid)
+  }).get()
+  // 兼容历史数据的来源别名，按 mid 缩小范围后再按归一化来源过滤
   const targets = result.data.filter((item) => normalizeMusicSource(item.source) === source)
   if (!targets.length) {
     return failure('收藏不存在', 404)
@@ -646,15 +745,28 @@ const toggleFavoriteChildren = async (payload, user) => {
 }
 
 const deleteFavorite = async (payload, user) => {
-  const result = await db.collection('playlists').where({ _openid: user._openid, mid: payload.mid }).get()
+  if (!payload.mid) {
+    return failure('缺少歌曲标识', 422)
+  }
   const source = normalizeMusicSource(payload.source)
-  await Promise.all(result.data.filter((item) => normalizeMusicSource(item.source) === source).map((item) => db.collection('playlists').doc(item._id).remove()))
+  const result = await db.collection('playlists').where({
+    _openid: user._openid,
+    mid: String(payload.mid)
+  }).get()
+  const targets = result.data.filter((item) => normalizeMusicSource(item.source) === source)
+  await Promise.all(targets.map((item) => db.collection('playlists').doc(item._id).remove()))
   return success(null, '移除成功')
 }
 
 const queueList = async () => {
-  const result = await db.collection('play_queue').where({ room_id: DEFAULT_ROOM_ID }).orderBy('sort_time', 'asc').limit(100).get()
-  return success(result.data)
+  const result = await db.collection('play_queue').where({ room_id: DEFAULT_ROOM_ID }).orderBy('sort_time', 'asc').limit(QUEUE_READ_LIMIT).get()
+  return success(result.data.map((item) => ({
+    _id: item._id,
+    song: item.song,
+    user: item.user,
+    since: item.since,
+    sort_time: item.sort_time
+  })))
 }
 
 const getQueueItem = async (payload) => {
@@ -725,10 +837,27 @@ const addSong = async (payload, user, playNow = false) => {
       return success(null, '点歌成功')
     }
   }
+  // 先做容量预检，避免立即播放清空当前歌曲后才发现队列已满
+  const queueCount = await getQueueCount()
+  if (!playNow && queueCount >= MAX_QUEUE_SIZE) {
+    return failure('播放队列已满，请先移除部分歌曲', 409)
+  }
   // 立即播放时清理旧当前歌曲与同曲重复项，并把新歌曲放到队首，
   // 保证 rooms.current_song 始终对应播放队列第一项，避免切歌时又切回已播歌曲
   if (playNow) {
     const currentId = room.current_song && room.current_song._id
+    const duplicateResult = await db.collection('play_queue').where({
+      room_id: DEFAULT_ROOM_ID,
+      'song.source': normalizeMusicSource(song.source),
+      'song.mid': song.mid
+    }).get()
+    const removableIds = new Set(duplicateResult.data.map((item) => String(item._id)))
+    if (currentId) {
+      removableIds.add(String(currentId))
+    }
+    if (queueCount - removableIds.size + 1 > MAX_QUEUE_SIZE) {
+      return failure('播放队列已满，请先移除部分歌曲', 409)
+    }
     if (currentId) {
       // 先把 current_song 置空再删除其队列行：即便删除后调用被中断，current_song 也不会悬空指向已删记录
       await db.collection('rooms').where({
@@ -748,9 +877,6 @@ const addSong = async (payload, user, playNow = false) => {
       'song.mid': song.mid
     }).remove()
   }
-  if (await getQueueCount() >= MAX_QUEUE_SIZE) {
-    return failure('播放队列已满，请先移除部分歌曲', 409)
-  }
   const queueItem = {
     room_id: DEFAULT_ROOM_ID,
     song,
@@ -760,8 +886,17 @@ const addSong = async (payload, user, playNow = false) => {
     created_at: db.serverDate()
   }
   const created = await db.collection('play_queue').add({ data: queueItem })
+  // 并发点歌可能同时通过预检，入队后复核；超出上限则回滚本次新增
+  if (await getQueueCount() > MAX_QUEUE_SIZE) {
+    await db.collection('play_queue').doc(created._id).remove().catch(() => null)
+    return failure('播放队列已满，请先移除部分歌曲', 409)
+  }
   if (playNow || !room.current_song) {
-    await db.collection('rooms').where({ room_id: DEFAULT_ROOM_ID }).update({
+    // 只在指针仍为空时补位，避免与并发切歌/点歌互相覆盖
+    await db.collection('rooms').where({
+      room_id: DEFAULT_ROOM_ID,
+      current_song: null
+    }).update({
       data: {
         current_song: _.set({ ...queueItem, _id: created._id, since: Math.floor(Date.now() / 1000) }),
         recent_played: buildRecentPlayed(room, song),
@@ -778,7 +913,7 @@ const switchToNextSong = async (room, options = {}) => {
   const readQueue = () => db.collection('play_queue')
     .where({ room_id: DEFAULT_ROOM_ID })
     .orderBy('sort_time', 'asc')
-    .limit(100)
+    .limit(QUEUE_READ_LIMIT)
     .get()
   let queue = await readQueue()
   // 切歌前清理当前歌曲在队列中的其他重复项（历史数据可能残留），避免切走后立刻又播回同一首
@@ -833,7 +968,7 @@ const getQueueSongs = async () => {
   const result = await db.collection('play_queue')
     .where({ room_id: DEFAULT_ROOM_ID })
     .orderBy('sort_time', 'asc')
-    .limit(100)
+    .limit(QUEUE_READ_LIMIT)
     .get()
   return result.data
 }
@@ -990,11 +1125,29 @@ const refillQueue = async (payload, user) => {
       .slice(0, Math.max(needed * 2, needed))
     const promptPool = room.children_mode ? [] : clientPoolOf('prompt')
     const childrenPool = room.children_mode ? clientPoolOf('children') : []
-    // 提示词搜索成功时刷新房间缓存
+    // 提示词搜索成功时刷新房间缓存：与已有缓存合并去重，避免一次调用覆盖全房备用歌单
     if (promptPool.length) {
+      const merged = []
+      const seen = new Set()
+      ;[...promptPool, ...(Array.isArray(room.backup_songs) ? room.backup_songs : [])].forEach((song) => {
+        try {
+          const normalized = validateSong(song)
+          if (normalized.source !== 'netease' && normalized.source !== 'tencent') {
+            return
+          }
+          const key = `${normalized.source}:${normalized.mid}`
+          if (seen.has(key)) {
+            return
+          }
+          seen.add(key)
+          merged.push(normalized)
+        } catch (error) {
+          // 跳过损坏的历史缓存项
+        }
+      })
       await db.collection('rooms').doc(room._id).update({
         data: {
-          backup_songs: promptPool.slice(0, 10),
+          backup_songs: merged.slice(0, 10),
           updated_at: db.serverDate()
         }
       })
@@ -1124,35 +1277,36 @@ const removeQueueSong = async (payload, user) => {
     return failure('缺少歌曲标识', 422)
   }
   const item = await getQueueItem(payload)
-  if (item) {
-    const room = await getDefaultRoom(user)
-    const requesterId = item.user && item.user.user_id
-    if (room.room_user !== user._id && requesterId !== user._id) {
-      return failure('无权移除该歌曲', 403)
+  if (!item) {
+    return failure('歌曲不在播放队列中', 404)
+  }
+  const room = await getDefaultRoom(user)
+  const requesterId = item.user && item.user.user_id
+  if (room.room_user !== user._id && requesterId !== user._id) {
+    return failure('无权移除该歌曲', 403)
+  }
+  // 移除正在播放的歌曲时同步切歌，避免 current_song 仍指向已删除的队列项，
+  // 导致该歌曲一直处于“正在播放”而无法重新点歌
+  if (room.current_song && String(room.current_song._id) === String(item._id)) {
+    const result = await switchToNextSong(room, { refillWhenEmpty: true, user })
+    if (!result.advanced) {
+      await db.collection('play_queue').doc(item._id).remove().catch(() => null)
     }
-    // 移除正在播放的歌曲时同步切歌，避免 current_song 仍指向已删除的队列项，
-    // 导致该歌曲一直处于“正在播放”而无法重新点歌
-    if (room.current_song && String(room.current_song._id) === String(item._id)) {
-      const result = await switchToNextSong(room, { refillWhenEmpty: true, user })
-      if (!result.advanced) {
-        await db.collection('play_queue').doc(item._id).remove().catch(() => null)
-      }
-    } else if (item.song && item.song.source && item.song.mid) {
-      // 同曲可能存在历史重复项，移除时一并清理；当前播放项必须排除，
-      // 否则会把仍在播放的队列行删掉，导致 rooms.current_song 指向已删除项
-      const duplicateWhere = {
-        room_id: DEFAULT_ROOM_ID,
-        'song.source': normalizeMusicSource(item.song.source),
-        'song.mid': String(item.song.mid)
-      }
-      const currentId = room.current_song && room.current_song._id
-      if (currentId) {
-        duplicateWhere._id = _.neq(currentId)
-      }
-      await db.collection('play_queue').where(duplicateWhere).remove()
-    } else {
-      await db.collection('play_queue').doc(item._id).remove()
+  } else if (item.song && item.song.source && item.song.mid) {
+    // 同曲可能存在历史重复项，移除时一并清理；当前播放项必须排除，
+    // 否则会把仍在播放的队列行删掉，导致 rooms.current_song 指向已删除项
+    const duplicateWhere = {
+      room_id: DEFAULT_ROOM_ID,
+      'song.source': normalizeMusicSource(item.song.source),
+      'song.mid': String(item.song.mid)
     }
+    const currentId = room.current_song && room.current_song._id
+    if (currentId) {
+      duplicateWhere._id = _.neq(currentId)
+    }
+    await db.collection('play_queue').where(duplicateWhere).remove()
+  } else {
+    await db.collection('play_queue').doc(item._id).remove()
   }
   return success(null, '移除成功')
 }
@@ -1162,13 +1316,24 @@ const pushQueueSong = async (payload, user) => {
     return failure('缺少歌曲标识', 422)
   }
   const item = await getQueueItem(payload)
-  if (item) {
-    const room = await getDefaultRoom(user)
-    if (room.room_user !== user._id) {
-      return failure('只有房主可以置顶歌曲', 403)
-    }
-    await db.collection('play_queue').doc(item._id).update({ data: { sort_time: 0 } })
+  if (!item) {
+    return failure('歌曲不在播放队列中', 404)
   }
+  const room = await getDefaultRoom(user)
+  if (room.room_user !== user._id) {
+    return failure('只有房主可以置顶歌曲', 403)
+  }
+  // 置顶只调整待播顺序：取当前播放项之后的最小 sort_time 再减一，
+  // 既保证当前播放项仍在队首，也避免多次置顶都写 0 造成顺序不稳定
+  const currentId = room.current_song && room.current_song._id
+  const headWhere = { room_id: DEFAULT_ROOM_ID }
+  if (currentId) {
+    headWhere._id = _.neq(currentId)
+  }
+  const head = await db.collection('play_queue').where(headWhere).orderBy('sort_time', 'asc').limit(1).get()
+  const headSort = head.data.length ? Number(head.data[0].sort_time) : 0
+  const nextSort = Number.isFinite(headSort) ? headSort - 1 : 0
+  await db.collection('play_queue').doc(item._id).update({ data: { sort_time: nextSort } })
   return success(null, '置顶成功')
 }
 
@@ -1250,12 +1415,18 @@ const updateSearchPrompts = async (payload, user) => {
   return success(prompts, '搜索提示词已更新')
 }
 
+// 客户端只需要房间业务字段，补歌锁与备用缓存等内部状态不下发
+const toClientRoom = (room) => {
+  const { _id, backup_songs, refill_lock_until, refill_lock_token, ...clientRoom } = room
+  return clientRoom
+}
+
 const handlers = {
   'user/getmyinfo': async (payload, user) => success(toClientUser(user)),
   // 附带服务端当前时间戳 serverTime，供客户端进房时校准本机与服务器的时钟差（切歌 seek 不受本机钟差影响）
   'room/getRoomInfo': async (payload, user) => {
     const room = await getDefaultRoom(user)
-    return { code: 200, msg: '操作成功', data: room, serverTime: Date.now() }
+    return { code: 200, msg: '操作成功', data: toClientRoom(room), serverTime: Date.now() }
   },
   'room/getSearchPrompts': async (payload, user) => success(normalizeSearchPrompts((await getDefaultRoom(user)).search_prompts)),
   'room/updateSearchPrompts': updateSearchPrompts,
@@ -1305,7 +1476,9 @@ const handlers = {
 
 exports.main = async (event) => {
   try {
-    if (event.Type === 'Timer' && event.TriggerName === 'refillPlaybackQueue') {
+    const openid = getOpenid()
+    // 定时触发器没有 OPENID；客户端伪造 Type/TriggerName 时仍会携带 OPENID，不能进入该分支
+    if (!openid && event.Type === 'Timer' && event.TriggerName === 'refillPlaybackQueue') {
       const roomResult = await db.collection('rooms').where({ room_id: DEFAULT_ROOM_ID }).limit(1).get()
       const room = roomResult.data[0]
       if (!room || !room.room_user) {
@@ -1317,7 +1490,6 @@ exports.main = async (event) => {
       }
       return refillQueue({ count: 3 }, ownerResult.data)
     }
-    const openid = getOpenid()
     if (!openid) {
       return failure('请先完成微信登录', 401)
     }
@@ -1335,13 +1507,13 @@ exports.main = async (event) => {
       }
       return failure('请先完成微信登录', 401)
     }
-    const handler = handlers[event.action]
+    const handler = Object.prototype.hasOwnProperty.call(handlers, event.action) ? handlers[event.action] : null
     if (!handler) {
       return failure(`暂不支持操作：${event.action}`, 404)
     }
     return await handler(event.payload || {}, user)
   } catch (error) {
     console.error('[musicApp]', event.action, error)
-    return failure(error.message || '云函数执行失败')
+    return failure('云函数执行失败，请稍后重试')
   }
 }

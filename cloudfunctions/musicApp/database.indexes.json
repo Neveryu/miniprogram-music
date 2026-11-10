@@ -21,6 +21,15 @@
         { "field": "room_id", "direction": "asc" },
         { "field": "created_timestamp", "direction": "desc" }
       ]
+    },
+    {
+      "name": "owner_room_client_msg",
+      "unique": false,
+      "fields": [
+        { "field": "_openid", "direction": "asc" },
+        { "field": "room_id", "direction": "asc" },
+        { "field": "client_msg_id", "direction": "asc" }
+      ]
     }
   ],
   "play_queue": [
@@ -41,6 +50,15 @@
         { "field": "_openid", "direction": "asc" },
         { "field": "source", "direction": "asc" },
         { "field": "mid", "direction": "asc" }
+      ]
+    },
+    {
+      "name": "owner_children_created",
+      "unique": false,
+      "fields": [
+        { "field": "_openid", "direction": "asc" },
+        { "field": "children", "direction": "asc" },
+        { "field": "created_at", "direction": "desc" }
       ]
     }
   ]

@@ -6,7 +6,7 @@ const USER_INFO_KEY = 'music_user_info'
 const CLOUD_FILE_URL_TTL = 60 * 60 * 1000
 App({
   globalData: {
-    // 入口校验令牌：每次冷启动生成一次性随机值，站内导航通过 ?bbbug= 携带、
+    // 入口校验令牌：每次冷启动生成一个时间戳标识，站内导航通过 ?bbbug= 携带、
     // 各子页面 onLoad 校验，防止页面被外部分享/扫码直接打开而无上下文进入。
     systemVersion: String(Date.now()),
     roomInfo: null,

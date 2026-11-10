@@ -1,4 +1,4 @@
-<view class="car-mode" bindtouchstart="onTouchStart" bindtouchmove="onTouchMove" bindtouchend="onTouchEnd" bindtouchcancel="onTouchEnd">
+<view class="car-mode" wx:if="{{bbbug}}" bindtouchstart="onTouchStart" bindtouchmove="onTouchMove" bindtouchend="onTouchEnd" bindtouchcancel="onTouchEnd">
   <!-- 深夜巡航场景 -->
   <view class="car-scene">
     <view class="nav-nebula"></view>

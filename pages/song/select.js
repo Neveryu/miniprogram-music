@@ -1,6 +1,8 @@
 const app = getApp()
 const jusicWsApi = require('../../utils/jusicWsApi.js')
 const { fillSongCovers } = require('../../utils/cover.js')
+const { showLoading, hideLoading } = require('../../utils/request.js')
+const { checkPageToken, getRoomId } = require('../../utils/pageGuard.js')
 Component({
   /**
    * 组件的属性列表
@@ -24,6 +26,7 @@ Component({
     ],
     searchType: 'song',
     hasSearched: false,
+    searchFailed: false,
     sources: [
       { value: 'netease', label: '网易云' },
       { value: 'tencent', label: 'QQ音乐' }
@@ -36,7 +39,7 @@ Component({
    */
   methods: {
     onLoad(options) {
-      if (!options.bbbug || options.bbbug != app.globalData.systemVersion) {
+      if (!checkPageToken(options)) {
         return
       }
       this.setData({
@@ -51,13 +54,19 @@ Component({
     onUnload() {
       this.cancelPendingSearch()
       this._searchRequestId = (this._searchRequestId || 0) + 1
-      wx.hideLoading()
+      this.releaseSearchLoading()
     },
     cancelPendingSearch() {
       if (this._searchRequest && typeof this._searchRequest.cancel === 'function') {
         this._searchRequest.cancel()
       }
       this._searchRequest = null
+    },
+    releaseSearchLoading() {
+      if (this._searchLoading) {
+        this._searchLoading = false
+        hideLoading()
+      }
     },
     getSearchPrompts() {
       app.request({
@@ -82,7 +91,7 @@ Component({
     selectSource(e) {
       this.cancelPendingSearch()
       this._searchRequestId = (this._searchRequestId || 0) + 1
-      wx.hideLoading()
+      this.releaseSearchLoading()
       this.resetScrollTop()
       const source = e.currentTarget.dataset.source
       let searchTypes = [{ value: 'song', label: '歌曲' }]
@@ -107,13 +116,14 @@ Component({
         songList: [],
         playlistList: [],
         userList: [],
-        hasSearched: false
+        hasSearched: false,
+        searchFailed: false
       })
     },
     selectSearchType(e) {
       this.cancelPendingSearch()
       this._searchRequestId = (this._searchRequestId || 0) + 1
-      wx.hideLoading()
+      this.releaseSearchLoading()
       this.resetScrollTop()
       const searchType = e.currentTarget.dataset.searchType
       this.setData({
@@ -121,7 +131,8 @@ Component({
         songList: [],
         playlistList: [],
         userList: [],
-        hasSearched: false
+        hasSearched: false,
+        searchFailed: false
       })
     },
     // 封面图加载失败时回退本地占位图
@@ -152,9 +163,11 @@ Component({
 
       const requestId = (this._searchRequestId || 0) + 1
       this.cancelPendingSearch()
+      this.releaseSearchLoading()
       this._searchRequestId = requestId
       this.setData({
         hasSearched: true,
+        searchFailed: false,
         songList: [],
         playlistList: [],
         userList: []
@@ -164,7 +177,8 @@ Component({
       const isNeteaseWsSearch = source === 'netease'
       const isQQWsSearch = source === 'tencent' && (searchType === 'playlist' || searchType === 'song')
       if (isNeteaseWsSearch || isQQWsSearch) {
-        wx.showLoading({ title: '搜索中', mask: true })
+        this._searchLoading = true
+        showLoading('搜索中')
         let search
         if (source === 'tencent') {
           search = searchType === 'playlist'
@@ -197,11 +211,12 @@ Component({
           }
         }).catch(error => {
           if (requestId !== this._searchRequestId || (error && error.code === 'JUSIC_REQUEST_CANCELLED')) return
+          this.setData({ searchFailed: true })
           wx.showToast({ title: error.message || '搜索失败，请重试', icon: 'none' })
         }).then(() => {
           if (requestId === this._searchRequestId) {
             this._searchRequest = null
-            wx.hideLoading()
+            this.releaseSearchLoading()
           }
         })
       }
@@ -238,7 +253,9 @@ Component({
     },
     // 点歌/播放前统一通过 WS /music/pick 获取播放直链
     addSongToQueue(song, playNow) {
-      wx.showLoading({ title: playNow ? '播放中' : '点歌中', mask: true })
+      const roomId = getRoomId()
+      if (roomId == null) return
+      showLoading(playNow ? '播放中' : '点歌中')
       jusicWsApi.ensurePlayableSong(song).then(pickedSong => {
         app.request({
           url: playNow ? 'song/playSong' : 'song/addSong',
@@ -246,24 +263,28 @@ Component({
             mid: pickedSong.mid,
             source: pickedSong.source,
             song: pickedSong,
-            room_id: app.globalData.roomInfo.room_id
+            room_id: roomId
+          },
+          // 401 时 request.js 不会回调 error/fail，需在此关闭手动 loading
+          loginRequired: () => {
+            hideLoading()
           },
           success: () => {
-            wx.hideLoading()
+            hideLoading()
             wx.showToast({ title: playNow ? '播放成功' : '点歌成功' })
           },
           error: response => {
-            wx.hideLoading()
+            hideLoading()
             wx.showToast({ title: response.msg || (playNow ? '播放失败' : '点歌失败'), icon: 'none' })
             return true
           },
           fail: error => {
-            wx.hideLoading()
+            hideLoading()
             wx.showToast({ title: error.message || (playNow ? '播放失败' : '点歌失败'), icon: 'none' })
           }
         })
       }).catch(error => {
-        wx.hideLoading()
+        hideLoading()
         wx.showToast({ title: error.message || (playNow ? '播放失败' : '点歌失败'), icon: 'none' })
       })
     },
@@ -281,11 +302,13 @@ Component({
             case '点歌':
               this.addSongToQueue(song, false)
               break
-            case '收藏':
+            case '收藏': {
+              const roomId = getRoomId()
+              if (roomId == null) break
               app.request({
                 url: 'song/addMySong',
                 data: {
-                  room_id: app.globalData.roomInfo.room_id,
+                  room_id: roomId,
                   mid: song.mid,
                   source: song.source,
                   song: song
@@ -298,6 +321,7 @@ Component({
                 }
               })
               break
+            }
             case '播放':
               this.addSongToQueue(song, true)
               break

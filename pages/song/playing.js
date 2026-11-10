@@ -1,5 +1,6 @@
 const app = getApp()
 const { fillSongCovers } = require('../../utils/cover.js')
+const { checkPageToken, getRoomId } = require('../../utils/pageGuard.js')
 Component({
   /**
    * 组件的属性列表
@@ -18,7 +19,7 @@ Component({
    */
   methods: {
     onLoad(options) {
-      if (!options.bbbug || options.bbbug != app.globalData.systemVersion) {
+      if (!checkPageToken(options)) {
         return
       }
       this.setData({
@@ -28,6 +29,9 @@ Component({
         title: '待播放列表'
       })
       this.getSongList()
+    },
+    onUnload() {
+      this._queueRequestId = (this._queueRequestId || 0) + 1
     },
     onPullDownRefresh() {
       this.getSongList()
@@ -40,13 +44,15 @@ Component({
       })
     },
     getSongList() {
+      const roomId = getRoomId()
+      if (roomId == null) return
       const requestId = (this._queueRequestId || 0) + 1
       this._queueRequestId = requestId
       app.request({
         url: 'song/songList',
         loading: '加载中',
         data: {
-          room_id: app.globalData.roomInfo.room_id
+          room_id: roomId
         },
         success: (res) => {
           if (requestId !== this._queueRequestId) return
@@ -77,7 +83,9 @@ Component({
         itemList: menu,
         success: (res) => {
           switch (menu[res.tapIndex]) {
-            case '顶歌':
+            case '顶歌': {
+              const roomId = getRoomId()
+              if (roomId == null) break
               app.request({
                 url: 'song/push',
                 loading: '置顶中',
@@ -85,17 +93,28 @@ Component({
                   mid: song.song.mid,
                   source: song.song.source,
                   queue_id: song._id,
-                  room_id: app.globalData.roomInfo.room_id
+                  room_id: roomId
                 },
                 success: (res) => {
                   this.getSongList()
                   wx.showToast({
                     title: '置顶成功'
                   })
+                },
+                error: (response) => {
+                  this.getSongList()
+                  wx.showToast({ title: response.msg || '置顶失败', icon: 'none' })
+                  return true
+                },
+                fail: (error) => {
+                  wx.showToast({ title: error.message || '置顶失败，请重试', icon: 'none' })
                 }
               })
               break
-            case '移除':
+            }
+            case '移除': {
+              const roomId = getRoomId()
+              if (roomId == null) break
               app.request({
                 url: 'song/remove',
                 loading: '移除中',
@@ -103,21 +122,32 @@ Component({
                   mid: song.song.mid,
                   source: song.song.source,
                   queue_id: song._id,
-                  room_id: app.globalData.roomInfo.room_id
+                  room_id: roomId
                 },
                 success: (res) => {
                   this.getSongList()
                   wx.showToast({
                     title: '移除成功'
                   })
+                },
+                error: (response) => {
+                  this.getSongList()
+                  wx.showToast({ title: response.msg || '移除失败', icon: 'none' })
+                  return true
+                },
+                fail: (error) => {
+                  wx.showToast({ title: error.message || '移除失败，请重试', icon: 'none' })
                 }
               })
               break
-            case '收藏':
+            }
+            case '收藏': {
+              const roomId = getRoomId()
+              if (roomId == null) break
               app.request({
                 url: 'song/addMySong',
                 data: {
-                  room_id: app.globalData.roomInfo.room_id,
+                  room_id: roomId,
                   mid: song.song.mid,
                   source: song.song.source,
                   song: song.song,
@@ -127,9 +157,17 @@ Component({
                   wx.showToast({
                     title: '收藏成功'
                   })
+                },
+                error: (response) => {
+                  wx.showToast({ title: response.msg || '收藏失败', icon: 'none' })
+                  return true
+                },
+                fail: (error) => {
+                  wx.showToast({ title: error.message || '收藏失败，请重试', icon: 'none' })
                 }
               })
               break
+            }
             default:
               break
           }

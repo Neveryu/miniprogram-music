@@ -37,21 +37,16 @@ const SAFE_RETRY_ACTIONS = [
   'room/getRoomInfo',
   'room/getSearchPrompts',
   'room/updateSearchPrompts',
-  'room/setChildrenMode',
   'message/getMessageList',
   'message/back',
   'song/songList',
-  'song/addSong',
-  'song/playSong',
   'song/addMySong',
   'song/mySongList',
   'song/deleteMySong',
   'song/toggleMySongChildren',
-  'song/remove',
-  'song/push',
-  'song/pass',
+  // song/pass 不重试：首次可能已切歌成功，重试会返回 409 并让驾驶模式误报“切歌失败”
   'song/autoPass',
-  'song/ended',
+  // song/ended 不重试：首页已按 3 秒间隔重试并在失败时回退补歌，避免与传输层重试叠加放大调用量
   'song/refill',
   'song/getLrc',
   'song/getCovers'
@@ -67,16 +62,29 @@ const invokeCloud = (data) => wx.cloud.callFunction({
   }
 })
 
+// 并发请求共用全局 loading，用计数避免先完成的请求提前关闭遮罩
+let loadingCount = 0
+const showLoading = (title) => {
+  loadingCount += 1
+  wx.showLoading({
+    mask: true,
+    title
+  })
+}
+const hideLoading = () => {
+  loadingCount = Math.max(loadingCount - 1, 0)
+  if (!loadingCount) {
+    wx.hideLoading()
+  }
+}
+
 const request = (data = {}) => {
   if (data.loading) {
-    wx.showLoading({
-      mask: true,
-      title: data.loading
-    })
+    showLoading(data.loading)
   }
 
   const handleSuccess = (result) => {
-    data.loading && wx.hideLoading()
+    data.loading && hideLoading()
     const response = result.result || {}
     switch (response.code) {
       case config.code.success:
@@ -124,7 +132,7 @@ const request = (data = {}) => {
   }
 
   const handleFailure = (error) => {
-    data.loading && wx.hideLoading()
+    data.loading && hideLoading()
     console.error('[CloudRequest]', data.url, error)
     if (data.fail) {
       data.fail(error)
@@ -147,4 +155,4 @@ const request = (data = {}) => {
   })
 }
 
-module.exports = { request }
+module.exports = { request, showLoading, hideLoading }

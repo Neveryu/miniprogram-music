@@ -56,8 +56,8 @@
       <view class="empty-note mid">♫</view>
       <view class="empty-note late">♩</view>
     </view>
-    <view class="empty-title">{{searchType=='song' ? '没有搜索到歌曲' : searchType=='radio' ? '没有找到相关电台节目' : (searchType=='playlist' || searchType=='userPlaylists') ? '没有找到相关歌单' : '没有找到相关用户'}}</view>
-    <view class="empty-desc">换个关键词试试吧</view>
+    <view class="empty-title">{{searchFailed ? '搜索失败，请重试' : searchType=='song' ? '没有搜索到歌曲' : searchType=='radio' ? '没有找到相关电台节目' : (searchType=='playlist' || searchType=='userPlaylists') ? '没有找到相关歌单' : '没有找到相关用户'}}</view>
+    <view class="empty-desc">{{searchFailed ? '请检查网络后重新搜索' : '换个关键词试试吧'}}</view>
   </view>
 
   <!-- ===== 歌曲结果 ===== -->

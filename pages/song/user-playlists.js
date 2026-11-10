@@ -1,5 +1,7 @@
 const app = getApp()
 const jusicWsApi = require('../../utils/jusicWsApi.js')
+const { showLoading, hideLoading } = require('../../utils/request.js')
+const { checkPageToken } = require('../../utils/pageGuard.js')
 
 const decodeOption = (value, fallback = '') => {
   try {
@@ -26,7 +28,7 @@ Component({
 
   methods: {
     onLoad(options) {
-      if (!options.bbbug || options.bbbug != app.globalData.systemVersion || !options.id) {
+      if (!checkPageToken(options, true)) {
         return
       }
       const source = options.source === 'qq' || options.source === 'tencent' ? 'tencent' : 'netease'
@@ -54,7 +56,10 @@ Component({
         this._playlistRequest.cancel()
       }
       this.setData({ isLoading: true })
-      wx.showLoading({ title: '加载中', mask: true })
+      if (!this._listLoading) {
+        this._listLoading = true
+        showLoading('加载中')
+      }
       const request = this.data.source === 'tencent'
         ? jusicWsApi.getQQUserPlaylists(this.data.userId, { page, pageSize })
         : jusicWsApi.getUserPlaylists(this.data.userId, { page, pageSize })
@@ -80,8 +85,8 @@ Component({
       }).then(() => {
         if (requestId === this._playlistRequestId) {
           this._playlistRequest = null
+          this.releaseListLoading()
           this.setData({ isLoading: false })
-          wx.hideLoading()
         }
       })
     },
@@ -93,13 +98,20 @@ Component({
       }
     },
 
+    releaseListLoading() {
+      if (this._listLoading) {
+        this._listLoading = false
+        hideLoading()
+      }
+    },
+
     onUnload() {
       if (this._playlistRequest && typeof this._playlistRequest.cancel === 'function') {
         this._playlistRequest.cancel()
       }
       this._playlistRequest = null
       this._playlistRequestId = (this._playlistRequestId || 0) + 1
-      wx.hideLoading()
+      this.releaseListLoading()
     },
 
     openPlaylist(e) {

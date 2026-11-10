@@ -15,7 +15,6 @@ const WS_BASE = 'wss://xin.hanxin.vip/server'
 const WS_INFO_URL = 'https://xin.hanxin.vip/server/info'
 const HOUSE_ID = 'DEFAULT'
 const HOUSE_PWD = ''
-const BASIC_AUTH = ''
 
 const REQUEST_TIMEOUT = 15000
 const CONNECT_TIMEOUT = 10000
@@ -37,6 +36,8 @@ const requestQueue = []
 let requestPump = null
 let closing = false
 let currentPick = null
+// NOTICE 帧不带请求标识：记录最近一次发出的业务帧类型，用于把失败通知归属到正确的请求
+let lastSentKind = ''
 
 function clearConnectTimer() {
   if (connectTimer) {
@@ -191,9 +192,6 @@ function ensureConnected() {
 
       const header = {}
       if (cookie) header.Cookie = cookie
-      if (BASIC_AUTH) {
-        header.Authorization = 'Basic ' + base64Encode(BASIC_AUTH)
-      }
 
       let task
       try {
@@ -331,12 +329,23 @@ function handleFrames(raw, task) {
 
     // 参数错误和服务端校验错误通过 NOTICE 回推；只有明确的失败码或失败标记
     // 才能结束当前请求。连接成功通知同样是 NOTICE，但不能误判为请求失败。
-    if (currentRequest && type === 'NOTICE' && isFailureNotice(body)) {
-      settleAsError(new Error(body.message || body.error || '服务请求失败'), true)
-      continue
-    }
-    if (currentPick && type === 'NOTICE' && isFailureNotice(body)) {
-      settlePick(null, new Error(body.message || body.error || '点播失败'))
+    // NOTICE 不带请求标识：优先按最近发送的帧类型归属（点播帧会插队到搜索请求之间），
+    // 其次看点播相关文案，避免误杀并发的搜索请求。
+    if (type === 'NOTICE' && isFailureNotice(body)) {
+      const message = body.message || body.error || ''
+      const pickPreferred = lastSentKind === 'pick' || /点歌|点播/.test(String(message))
+      if (currentPick && pickPreferred) {
+        settlePick(null, new Error(message || '点播失败'))
+        continue
+      }
+      if (currentRequest) {
+        settleAsError(new Error(message || '服务请求失败'), true)
+        continue
+      }
+      if (currentPick) {
+        settlePick(null, new Error(message || '点播失败'))
+        continue
+      }
       continue
     }
     if (currentPick && type === 'NOTICE' && body && body.message === '点歌成功') {
@@ -408,6 +417,11 @@ function cancelRequest(entry) {
     entry.settled = true
     entry.reject(error)
 
+    // 重建连接会让在途点播永远等不到 PICK 帧，先以取消错误结算，由点播逻辑在新连接上重发
+    if (currentPick) {
+      settlePick(null, createCancellationError())
+    }
+
     // 服务端不会回传客户端请求 ID。取消正在发送的请求时必须重建连接，
     // 否则迟到的同类型响应可能被错误地关联到下一个请求。
     const task = socketTask
@@ -477,6 +491,7 @@ function pumpRequests() {
     const frame = 'SEND\ndestination:' + pending.destination
       + '\ncontent-type:application/json\n\n'
       + JSON.stringify(pending.payload) + '\u0000'
+    lastSentKind = 'request'
     const task = socketTask
     if (!task) {
       settleAsError(new Error('发送失败：WebSocket 连接不可用'), true)
@@ -587,10 +602,6 @@ function normalizePageData(data) {
   return { currentPage: 1, pageSize: 0, totalSize: 0, data: [] }
 }
 
-function getPageItems(data) {
-  return normalizePageData(data).data
-}
-
 function getPageTotal(data, fallback) {
   const page = normalizePageData(data)
   const total = Number(page.totalSize ?? page.total ?? page.count)
@@ -694,7 +705,10 @@ function mapSong(item, source = 'netease') {
       ? String(singerValue.name || singerValue.nickname || '')
       : String(singerValue)
   const cover = httpsUrl(picture)
-  const duration = Number(raw.duration || 0)
+  // netease 返回毫秒 duration；QQ 搜索结果常用秒级 interval，统一换算为毫秒
+  const duration = Number(raw.duration) > 0
+    ? Number(raw.duration)
+    : (Number(raw.interval) > 0 ? Number(raw.interval) * 1000 : 0)
   return {
     // 页面和云函数使用 mid；同时保留 QQ 原始 songmid/id 别名，避免在点歌、收藏和播放菜单间丢失标识。
     id: mid,
@@ -771,9 +785,13 @@ function pickSong(song, sourceCode) {
   if (!id) {
     return Promise.reject(new Error('歌曲标识无效'))
   }
-  return ensureConnected().then(() => new Promise((resolve, reject) => {
+  const sendPick = (attempt) => ensureConnected().then(() => new Promise((resolve, reject) => {
     if (currentPick) {
       reject(new Error('上一次点播尚未完成，请稍候'))
+      return
+    }
+    if (!socketTask) {
+      reject(new Error('连接已断开，请重试'))
       return
     }
     const timer = setTimeout(() => settlePick(null, new Error('获取播放地址超时，请重试')), REQUEST_TIMEOUT)
@@ -788,11 +806,24 @@ function pickSong(song, sourceCode) {
       sendTime: Date.now()
     }
     const frame = 'SEND\ndestination:/music/pick\n\n' + JSON.stringify(payload) + '\u0000'
-    socketTask.send({
-      data: JSON.stringify([frame]),
-      fail: error => settlePick(null, new Error('发送失败：' + (error.errMsg || '')))
-    })
-  }))
+    lastSentKind = 'pick'
+    try {
+      socketTask.send({
+        data: JSON.stringify([frame]),
+        fail: error => settlePick(null, new Error('发送失败：' + (error.errMsg || '')))
+      })
+    } catch (error) {
+      // send 同步抛错时立即清理 currentPick，避免阻塞后续点播直到超时
+      settlePick(null, new Error('发送失败：' + (error.errMsg || error.message || '')))
+    }
+  })).catch((error) => {
+    // 取消其它请求会重建连接，在途点播的 PICK 帧随之丢失；此时在新连接上重发一次
+    if (attempt < 2 && error && error.code === CANCELLATION_CODE) {
+      return sendPick(attempt + 1)
+    }
+    throw error
+  })
+  return sendPick(1)
 }
 
 /** 点歌或播放前确保歌曲带有可用的直链：已有直链直接返回，force 或缺失时走 WS 点播获取 */
@@ -1022,21 +1053,6 @@ function getPlaylistDetail(playlistId, options = {}) {
       : mapPlaylist({ id, name: '网易云歌单', songCount: total })
     return { playlist, songs, total, hasMore: page * pageSize < total }
   })
-}
-
-function base64Encode(value) {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
-  let output = ''
-  for (let index = 0; index < value.length; index += 3) {
-    const first = value.charCodeAt(index)
-    const second = value.charCodeAt(index + 1)
-    const third = value.charCodeAt(index + 2)
-    output += chars[first >> 2]
-    output += chars[((first & 3) << 4) | (Number.isNaN(second) ? 0 : second >> 4)]
-    output += Number.isNaN(second) ? '=' : chars[((second & 15) << 2) | (Number.isNaN(third) ? 0 : third >> 6)]
-    output += Number.isNaN(third) ? '=' : chars[third & 63]
-  }
-  return output
 }
 
 module.exports = {

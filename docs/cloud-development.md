@@ -49,9 +49,9 @@ cloudfunctions/musicApp
 | --- | --- | --- | --- |
 | `users` | 微信用户和资料 | `_openid`、`user_name`、`user_head`、`user_sex` | `_openid` 唯一 |
 | `rooms` | 唯一默认房间、当前歌曲和自动补歌状态 | `room_id`、`room_name`、`room_user`、`current_song`、`search_prompts`、`backup_songs`、`refill_lock_until`、`children_mode` | `room_id` 唯一 |
-| `messages` | 文本、图片、语音和引用消息 | `room_id`、`payload`、`created_timestamp` | `room_id + created_timestamp` |
+| `messages` | 文本、图片、语音和引用消息 | `room_id`、`payload`、`created_timestamp`、`client_msg_id` | `room_id + created_timestamp`；`_openid + room_id + client_msg_id` |
 | `play_queue` | 待播放队列（最多 100 条） | `room_id`、`song`、`sort_time`、`auto_added`、`backup_source` | `room_id + sort_time` |
-| `playlists` | 用户歌曲收藏 | `_openid`、`source`、`mid`、`song`、`children`（儿歌分类标记） | `_openid + source + mid` 唯一 |
+| `playlists` | 用户歌曲收藏 | `_openid`、`source`、`mid`、`song`、`children`（儿歌分类标记） | `_openid + source + mid` 唯一；`_openid + children + created_at` |
 
 数据库规则和索引定义文件位于 `cloudfunctions/musicApp/database.rules.json` 和 `cloudfunctions/musicApp/database.indexes.json`，部署时需在云控制台手动创建对应集合与索引。
 
@@ -105,12 +105,14 @@ OPENID 不返回客户端，也不作为客户端请求参数。
 
 ## 文件存储
 
-- 聊天图片路径：`messages/<时间戳>-<随机值>.jpg`
+- 聊天图片路径：`messages/<时间戳>-<随机值>.<原文件扩展名>`
 - 聊天语音路径：`messages/voice/<时间戳>-<随机值>.mp3`
-- 登录头像路径：`avatars/<时间戳>-<随机值>.jpg`
+- 登录头像路径：`avatars/<时间戳>-<随机值>.<原文件扩展名>`
 - 数据库保存云文件 `fileID`。
 
 云存储权限必须设置为「所有用户可读，仅创建者可写」，否则其他用户无法读取头像、聊天图片和语音（表现为他人头像显示占位图）。客户端通过 `resolveMessageCloudUrls` 将消息中的 `cloud://` 地址转换为临时访问链接，图片消息使用 `img` 类型标识。
+
+撤回消息时，云函数只清理该消息自身且未被其他消息引用的 `messages/` 下图片/语音文件（头像等目录不受影响）；发送消息遇到登录失效或业务校验失败时，客户端也会清理刚上传的文件。传输失败可能是响应丢失但消息已入库，因此只在明确失败时删除。发送接口也会拒绝 `messages/` 目录之外的图片/语音地址，并让媒体消息的 `resource` 以校验后的 `content` 为准，防止构造消息引用他人媒体。
 
 ## 音乐接口状态
 
@@ -151,8 +153,8 @@ wss://xin.hanxin.vip/server/{serverId}/{sessionId}/websocket
 2. 创建 `users`、`rooms`、`messages`、`play_queue`、`playlists` 五个集合。
 3. 按上表创建索引（参考 `cloudfunctions/musicApp/database.indexes.json`）。
 4. 按集合配置客户端权限：`messages`、`rooms` 可读，`users`、`playlists`、`play_queue` 关闭读取；所有集合禁止客户端直接写入（参考 `cloudfunctions/musicApp/database.rules.json`）。
-5. 部署 `musicApp` 云函数并安装云端依赖，按需配置超时时间（云函数默认 3 秒上限，外部音乐接口调用可能超时）；`config.json` 已声明 `security.msgSecCheck` 权限，用于文字消息内容安全检测。
-6. 按需为 `musicApp` 配置定时触发器 `refillPlaybackQueue` 以启用周期性自动补歌。
+5. 部署 `musicApp` 云函数并安装云端依赖；`cloudfunctions/musicApp/config.json` 已声明 `timeout: 20`（外部音乐接口调用较慢），并声明 `security.msgSecCheck` 权限用于文字消息内容安全检测。
+6. `config.json` 已声明定时触发器 `refillPlaybackQueue`（每 5 分钟执行一次）以启用周期性自动补歌；部署时按需保留或删除该触发器。
 7. 将云存储权限设置为「所有用户可读，仅创建者可写」，确保跨用户头像、图片和语音可读。
 8. 验证已有用户可静默进入；新用户须勾选协议同意并通过微信一键登录创建。
 9. 验证默认房间、消息发送、语音录制、引用回复、数据库监听和图片上传。

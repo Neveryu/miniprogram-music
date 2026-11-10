@@ -65,7 +65,7 @@
   </scroll-view>
   
   <!-- 底部菜单栏 -->
-  <include src='./template/footer-toolbar.wxml'/>
+  <include src='/pages/index/template/footer-toolbar.wxml'/>
 
   <view class="bbbug_reply" wx:if="{{replyTarget}}">
     <view class="bbbug_reply_user" bindtap="clearReply">回复
