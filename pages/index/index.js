@@ -584,6 +584,7 @@ Page({
     })
     this.getMusicLrc()
     this.data.carEventChannel && this.data.carEventChannel.emit('sendSongInfo', this.data.songInfo)
+    this.refreshCarFavState()
     this.retryPickSongId = ''
     const directUrl = this.getDirectPlaybackUrl(msg.song.url)
     if (directUrl) {
@@ -1098,8 +1099,8 @@ Page({
             longPressPassTheSong: () => {
               this.longPressPassTheSong()
             },
-            tapToAddSong: () => {
-              this.tapToAddSong()
+            toggleFavorite: (payload) => {
+              this.toggleFavoriteFromCar(payload)
             }
           },
           success: (res) => {
@@ -1111,6 +1112,7 @@ Page({
             if (typeof this.data._lrcIndex === 'number') {
               res.eventChannel.emit('sendLrcIndex', this.data._lrcIndex)
             }
+            this.refreshCarFavState()
           }
         })
         break
@@ -1367,34 +1369,133 @@ Page({
     })
     this.autoScroll()
   },
-  tapToAddSong() {
-    if (!this.data.songInfo || !this.data.songInfo.song) {
-      wx.showToast({ title: '当前没有正在播放的歌曲', icon: 'none' })
+  // 驾驶模式收藏状态是否仍对应当前歌曲（切歌后旧查询/旧操作的回包一律丢弃）
+  isCarSongCurrent(mid) {
+    const song = this.data.songInfo && this.data.songInfo.song
+    return !!this.data.carEventChannel && !!song && String(song.mid) === mid
+  },
+  // 查询当前歌曲收藏状态并推送给驾驶页；游客直接推登录态，不发起云调用
+  refreshCarFavState() {
+    const channel = this.data.carEventChannel
+    const song = this.data.songInfo && this.data.songInfo.song
+    if (!channel || !song) {
       return
     }
-    const roomId = this.getRoomId()
-    if (roomId == null) {
-      wx.showToast({ title: '房间信息加载中，请稍后重试', icon: 'none' })
+    const mid = String(song.mid)
+    if (!this.data.userInfo) {
+      this.carFavState = 'login'
+      channel.emit('sendFavState', { mid, state: 'login' })
       return
+    }
+    this.carFavState = 'loading'
+    channel.emit('sendFavState', { mid, state: 'loading' })
+    const fallback = () => {
+      if (!this.isCarSongCurrent(mid)) {
+        return
+      }
+      // 查询失败按未收藏兜底：收藏接口幂等，再次点击收藏即可自愈状态
+      this.carFavState = 'no'
+      channel.emit('sendFavState', { mid, state: 'no' })
     }
     app.request({
-      url: 'song/addMySong',
+      url: 'song/checkMySong',
       data: {
-        room_id: roomId,
-        mid: this.data.songInfo.song.mid,
-        source: this.data.songInfo.song.source,
-        song: this.data.songInfo.song
+        mid: song.mid,
+        source: song.source
       },
-      loading: '收藏中',
+      success: (res) => {
+        if (!this.isCarSongCurrent(mid)) {
+          return
+        }
+        this.carFavState = res.data && res.data.favorited ? 'yes' : 'no'
+        channel.emit('sendFavState', { mid, state: this.carFavState })
+      },
+      login: () => {
+        if (!this.isCarSongCurrent(mid)) {
+          return
+        }
+        this.carFavState = 'login'
+        channel.emit('sendFavState', { mid, state: 'login' })
+      },
+      error: () => {
+        fallback()
+        return true
+      },
+      fail: fallback
+    })
+  },
+  // 驾驶模式收藏按钮：按最近一次查询结果切换 收藏/移除收藏
+  toggleFavoriteFromCar(payload) {
+    const channel = this.data.carEventChannel
+    const song = this.data.songInfo && this.data.songInfo.song
+    if (!channel || !song) {
+      return
+    }
+    const mid = String(song.mid)
+    // 点击瞬间歌曲已切换：让驾驶页按新歌重新查询，避免收藏错歌
+    if (payload && payload.mid && String(payload.mid) !== mid) {
+      this.refreshCarFavState()
+      return
+    }
+    if (this.carFavBusy) {
+      return
+    }
+    if (!this.data.userInfo) {
+      wx.showToast({ title: '请先登录后再收藏', icon: 'none' })
+      this.carFavState = 'login'
+      channel.emit('sendFavState', { mid, state: 'login' })
+      return
+    }
+    if (this.carFavState === 'loading') {
+      channel.emit('sendFavState', { mid, state: 'loading' })
+      return
+    }
+    const removing = this.carFavState === 'yes'
+    this.carFavBusy = true
+    channel.emit('sendFavState', { mid, state: this.carFavState, busy: true, busyAction: removing ? 'remove' : 'add' })
+    const restore = (state) => {
+      this.carFavBusy = false
+      if (!this.isCarSongCurrent(mid)) {
+        return
+      }
+      this.carFavState = state
+      channel.emit('sendFavState', { mid, state })
+    }
+    app.request({
+      url: removing ? 'song/deleteMySong' : 'song/addMySong',
+      data: removing ? {
+        mid: song.mid,
+        source: song.source
+      } : {
+        mid: song.mid,
+        source: song.source,
+        song
+      },
       success: () => {
-        wx.showToast({ title: '收藏成功' })
+        this.carFavBusy = false
+        if (!this.isCarSongCurrent(mid)) {
+          return
+        }
+        this.carFavState = removing ? 'no' : 'yes'
+        channel.emit('sendFavState', { mid, state: this.carFavState, burst: !removing })
+        wx.showToast({ title: removing ? '已移除收藏' : '收藏成功', icon: removing ? 'none' : 'success' })
+      },
+      login: () => {
+        this.carFavBusy = false
+        if (!this.isCarSongCurrent(mid)) {
+          return
+        }
+        this.carFavState = 'login'
+        channel.emit('sendFavState', { mid, state: 'login' })
       },
       error: (res) => {
-        wx.showToast({ title: res.msg || '收藏失败', icon: 'none' })
+        restore(removing ? 'yes' : 'no')
+        wx.showToast({ title: res.msg || (removing ? '移除失败' : '收藏失败'), icon: 'none' })
         return true
       },
       fail: () => {
-        wx.showToast({ title: '收藏失败，请重试', icon: 'none' })
+        restore(removing ? 'yes' : 'no')
+        wx.showToast({ title: '网络异常，请重试', icon: 'none' })
       }
     })
   },

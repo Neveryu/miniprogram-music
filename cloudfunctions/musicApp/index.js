@@ -695,6 +695,21 @@ const addFavorite = async (payload, user) => {
   return success(null, '收藏成功')
 }
 
+// 查询单曲是否已收藏：供驾驶模式收藏按钮渲染真实状态（儿歌标记不影响收藏判定）
+const checkFavorite = async (payload, user) => {
+  if (!payload.mid) {
+    return failure('缺少歌曲标识', 422)
+  }
+  const source = normalizeMusicSource(payload.source)
+  const result = await db.collection('playlists').where({
+    _openid: user._openid,
+    mid: String(payload.mid)
+  }).get()
+  // 兼容历史数据的来源别名，按 mid 缩小范围后再按归一化来源过滤
+  const favorited = result.data.some((item) => normalizeMusicSource(item.source) === source)
+  return success({ favorited })
+}
+
 const favoriteList = async (payload, user) => {
   const page = Math.max(parseInt(payload.page, 10) || 1, 1)
   const pageSize = 30
@@ -1438,6 +1453,7 @@ const handlers = {
   'song/addSong': addSong,
   'song/playSong': (payload, user) => addSong(payload, user, true),
   'song/addMySong': addFavorite,
+  'song/checkMySong': checkFavorite,
   'song/mySongList': (payload, user) => favoriteList(payload, user),
   'song/deleteMySong': deleteFavorite,
   'song/toggleMySongChildren': toggleFavoriteChildren,

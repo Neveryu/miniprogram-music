@@ -1,7 +1,13 @@
 <view class="car-mode" wx:if="{{bbbug}}" bindtouchstart="onTouchStart" bindtouchmove="onTouchMove" bindtouchend="onTouchEnd" bindtouchcancel="onTouchEnd">
-  <!-- 深夜巡航场景 -->
+  <!-- 极夜巡航场景 -->
   <view class="car-scene">
     <view class="nav-nebula"></view>
+    <!-- 极光帷幕 -->
+    <view class="aurora">
+      <view class="aurora-band band-a"></view>
+      <view class="aurora-band band-b"></view>
+      <view class="aurora-band band-c"></view>
+    </view>
     <!-- 星空 -->
     <view class="nav-star s1"></view>
     <view class="nav-star s2"></view>
@@ -15,32 +21,27 @@
     <view class="nav-star s10"></view>
     <view class="nav-meteor"></view>
     <view class="nav-moon"></view>
-    <!-- 远景城市（更暗更高） -->
-    <view class="nav-cityline nav-cityline-far">
-      <view class="nav-fb" style="left: 3%; height: 196rpx;"></view>
-      <view class="nav-fb" style="left: 13%; height: 224rpx;"></view>
-      <view class="nav-fb" style="left: 34%; height: 168rpx;"></view>
-      <view class="nav-fb" style="left: 49%; height: 208rpx;"></view>
-      <view class="nav-fb" style="left: 78%; height: 178rpx;"></view>
-      <view class="nav-fb" style="left: 88%; height: 216rpx;"></view>
+    <!-- 远处雪山（双层山脊 + 雪顶） -->
+    <view class="ridge ridge-far">
+      <view class="ridge-snow"></view>
     </view>
-    <!-- 近景城市剪影 -->
-    <view class="nav-cityline">
-      <view class="nav-bldg" style="left: 1%; height: 90rpx;"></view>
-      <view class="nav-bldg nav-bldg-beacon" style="left: 8%; height: 150rpx;"></view>
-      <view class="nav-bldg" style="left: 16%; height: 66rpx;"></view>
-      <view class="nav-bldg" style="left: 22%; height: 108rpx;"></view>
-      <view class="nav-bldg" style="left: 56%; height: 78rpx;"></view>
-      <view class="nav-bldg" style="left: 63%; height: 128rpx;"></view>
-      <view class="nav-bldg nav-bldg-beacon" style="left: 71%; height: 96rpx;"></view>
-      <view class="nav-bldg" style="left: 90%; height: 140rpx;"></view>
-      <view class="nav-bldg" style="left: 96%; height: 70rpx;"></view>
+    <view class="ridge ridge-near">
+      <view class="ridge-snow"></view>
     </view>
-    <!-- 路两侧地面 -->
+    <!-- 山间信号塔（红色航空障碍灯） -->
+    <view class="mast">
+      <view class="mast-beacon"></view>
+    </view>
+    <!-- 山脚木屋灯火 -->
+    <view class="cabin-light c1"></view>
+    <view class="cabin-light c2"></view>
+    <view class="cabin-light c3"></view>
+    <!-- 路两侧雪地 -->
     <view class="nav-ground nav-ground-l"></view>
     <view class="nav-ground nav-ground-r"></view>
     <!-- 汇聚到地平线的梯形路面 -->
     <view class="nav-road">
+      <view class="nav-road-sheen"></view>
       <view class="nav-edge nav-edge-l"></view>
       <view class="nav-edge nav-edge-r"></view>
     </view>
@@ -53,13 +54,13 @@
     <view class="nav-dash nav-dash-2 b"></view>
     <view class="nav-dash nav-dash-2 c"></view>
     <view class="nav-dash nav-dash-2 d"></view>
-    <!-- 路侧行道树 -->
-    <view class="nav-tree tree-l1"><view class="tree-trunk"></view><view class="tree-crown"></view></view>
-    <view class="nav-tree tree-l2"><view class="tree-trunk"></view><view class="tree-crown"></view></view>
-    <view class="nav-tree tree-l3"><view class="tree-trunk"></view><view class="tree-crown"></view></view>
-    <view class="nav-tree tree-r1"><view class="tree-trunk"></view><view class="tree-crown"></view></view>
-    <view class="nav-tree tree-r2"><view class="tree-trunk"></view><view class="tree-crown"></view></view>
-    <view class="nav-tree tree-r3"><view class="tree-trunk"></view><view class="tree-crown"></view></view>
+    <!-- 路侧雪松 -->
+    <view class="nav-tree tree-l1"><view class="pine pine-1"></view><view class="pine pine-2"></view><view class="pine pine-3"></view><view class="tree-trunk"></view></view>
+    <view class="nav-tree tree-l2"><view class="pine pine-1"></view><view class="pine pine-2"></view><view class="pine pine-3"></view><view class="tree-trunk"></view></view>
+    <view class="nav-tree tree-l3"><view class="pine pine-1"></view><view class="pine pine-2"></view><view class="pine pine-3"></view><view class="tree-trunk"></view></view>
+    <view class="nav-tree tree-r1"><view class="pine pine-1"></view><view class="pine pine-2"></view><view class="pine pine-3"></view><view class="tree-trunk"></view></view>
+    <view class="nav-tree tree-r2"><view class="pine pine-1"></view><view class="pine pine-2"></view><view class="pine pine-3"></view><view class="tree-trunk"></view></view>
+    <view class="nav-tree tree-r3"><view class="pine pine-1"></view><view class="pine pine-2"></view><view class="pine pine-3"></view><view class="tree-trunk"></view></view>
     <!-- 路侧路灯（暖光） -->
     <view class="nav-lamp lamp-l1"><view class="lamp-glow"></view></view>
     <view class="nav-lamp lamp-l2"><view class="lamp-glow"></view></view>
@@ -72,7 +73,7 @@
     <view class="nav-pool pool-r2"></view>
     <!-- 远方对向车灯 -->
     <view class="nav-far-car"><view class="far-dot far-dot-l"></view><view class="far-dot far-dot-r"></view></view>
-    <!-- 行驶中的小车：拖拽时沿路面推进，松手切歌后驶向建筑底部，新车从底部驶入 -->
+    <!-- 行驶中的小车：拖拽时沿路面推进，松手切歌后驶向雪山脚下，新车从底部驶入 -->
     <view class="nav-car {{carLeaving ? 'leaving' : ''}} {{carEntering ? 'entering' : ''}}" style="{{swiping && !carLeaving && !carEntering && dragOffset > 0 ? 'transform: translateY(' + (-dragOffset * 155) + 'rpx) scaleY(0.86) scale(' + (1 - dragOffset * 0.24) + '); opacity: ' + (1 - dragOffset * 0.4) + '; animation: none;' : ''}}">
       <view class="nav-car-shadow"></view>
       <view class="nav-car-lightcone nav-car-lightcone-l"></view>
@@ -88,28 +89,48 @@
         <view class="nav-car-taillight"></view>
       </view>
     </view>
+    <!-- 飘雪 -->
+    <view class="snowflake f1"></view>
+    <view class="snowflake f2"></view>
+    <view class="snowflake f3"></view>
+    <view class="snowflake f4"></view>
+    <view class="snowflake f5"></view>
+    <view class="snowflake f6"></view>
+    <view class="snowflake f7"></view>
     <view class="nav-vignette"></view>
   </view>
   <view class="car-mode-player" wx:if="{{songInfo && songInfo.song}}" style="top: {{top}}">
+    <!-- 巡航状态条 -->
+    <view class="hud-status">
+      <view class="hud-badge">
+        <view class="badge-dot"></view>
+        <text>极夜巡航</text>
+      </view>
+      <text class="hud-coord">N 66°34′ · AURORA LINE</text>
+    </view>
     <view class="car-mode-header">
       <view class="car-mode-header-main">
-        <view class="car-mode-img" bindtap="onTapFav">
+        <view class="car-mode-img">
           <image src="{{picError ? '/res/image/nohead.jpg' : songInfo.song.pic}}" binderror="onPicError" />
-          <!-- 收藏爱心：点击后点亮放大 -->
-          <view class="fav-heart {{favBurst ? 'burst' : ''}}">
-            <view class="fav-heart-core"></view>
-            <view class="fav-heart-ring"></view>
-            <view class="fav-heart-particle p1"></view>
-            <view class="fav-heart-particle p2"></view>
-            <view class="fav-heart-particle p3"></view>
-            <view class="fav-heart-particle p4"></view>
-            <view class="fav-heart-particle p5"></view>
-            <view class="fav-heart-particle p6"></view>
-          </view>
         </view>
         <view class="car-mode-song">
           <view class="car-mode-name">{{songInfo.song.name}}</view>
           <view class="car-mode-singer">{{songInfo.song.singer}}</view>
+          <!-- 收藏按钮：空心=未收藏，实心=已收藏；请求中显示 spinner，游客显示登录提示 -->
+          <view class="fav-btn {{favState === 'yes' ? 'faved' : ''}} {{favState === 'login' ? 'need-login' : ''}} {{favBusy || favState === 'loading' ? 'busy' : ''}} {{favBurst ? 'burst' : ''}}" bindtap="onTapFav" hover-class="fav-btn-hover" hover-stay-time="120">
+            <view class="fav-btn-icon">
+              <view wx:if="{{favBusy || favState === 'loading'}}" class="fav-spinner"></view>
+              <view wx:else class="fav-icon">
+                <view class="fav-icon-inner"></view>
+              </view>
+              <view class="fav-btn-ring"></view>
+              <view class="fav-btn-particle p1"></view>
+              <view class="fav-btn-particle p2"></view>
+              <view class="fav-btn-particle p3"></view>
+              <view class="fav-btn-particle p4"></view>
+            </view>
+            <text class="fav-btn-label">{{favBusy ? (favBusyAction === 'remove' ? '移除中' : '收藏中') : favState === 'loading' ? '查询中' : favState === 'yes' ? '已收藏' : favState === 'login' ? '登录后收藏' : '收藏'}}</text>
+          </view>
         </view>
         <view class="car-mode-eq">
           <view class="eq-bar eq-bar-1"></view>
@@ -129,7 +150,7 @@
       </view>
       <view class="car-mode-tips-inline">
         <view class="tips-dot"></view>
-        <text class="tips-inline-text">点击爱心收藏 · 上滑切歌</text>
+        <text class="tips-inline-text">收藏歌曲 · 上滑切歌</text>
       </view>
     </view>
     <view class="car-lrc-window">

@@ -23,6 +23,9 @@ Component({
     passTriggered: false,
     carLeaving: false,
     carEntering: false,
+    favState: 'loading',
+    favBusy: false,
+    favBusyAction: '',
     favBurst: false,
     picError: false,
     eventChannel: null,
@@ -45,9 +48,18 @@ Component({
       this.lrcScrollOffset = 0
       this.data.eventChannel = this.getOpenerEventChannel()
       this.data.eventChannel.on('sendSongInfo', (data) => {
+        if (this.favBurstTimer) {
+          clearTimeout(this.favBurstTimer)
+          this.favBurstTimer = null
+        }
+        // 新歌收藏状态未知，等首页查询推送，避免沿用上一首的已收藏态
         this.setData({
           songInfo: data,
-          picError: false
+          picError: false,
+          favState: 'loading',
+          favBusy: false,
+          favBusyAction: '',
+          favBurst: false
         })
       })
       this.data.eventChannel.on('sendLrcString', (str) => {
@@ -72,6 +84,24 @@ Component({
           lrcIndex: index
         })
         this.centerCurrentLine()
+      })
+      // 首页推送的收藏状态：mid 与当前歌曲不符（切歌竞态）时直接丢弃
+      this.data.eventChannel.on('sendFavState', (payload) => {
+        const song = this.data.songInfo && this.data.songInfo.song
+        if (!payload || !song || String(payload.mid) !== String(song.mid)) {
+          return
+        }
+        const update = {
+          favBusy: !!payload.busy,
+          favBusyAction: payload.busyAction || ''
+        }
+        if (payload.state) {
+          update.favState = payload.state
+        }
+        this.setData(update)
+        if (payload.burst) {
+          this.playFavBurst()
+        }
       })
       let systemInfo = app.systemInfo
       this.setData({
@@ -225,20 +255,34 @@ Component({
         })
       })
     },
-    // 点击封面收藏：触发爱心点亮动画 + 上报收藏
+    // 点击收藏按钮：把切换意图交给首页，状态以首页推送为准
     onTapFav() {
-      // 心形动画期间忽略重复点击，避免连续发起收藏请求
-      if (this.favBusy) {
+      if (this.data.favBusy || this.data.favState === 'loading') {
         return
       }
-      this.favBusy = true
+      if (this.data.favState === 'login') {
+        wx.showToast({ title: '请先登录后再收藏', icon: 'none' })
+        return
+      }
+      const song = this.data.songInfo && this.data.songInfo.song
+      if (!song) {
+        return
+      }
+      this.setData({
+        favBusy: true,
+        favBusyAction: this.data.favState === 'yes' ? 'remove' : 'add'
+      })
+      wx.vibrateShort({ type: 'light' })
+      this.data.eventChannel.emit('toggleFavorite', { mid: String(song.mid) })
+    },
+    // 收藏成功反馈：按钮弹跳 + 光环粒子，动画结束后复位
+    playFavBurst() {
       if (this.favBurstTimer) {
         clearTimeout(this.favBurstTimer)
       }
       this.setData({
         favBurst: false
       })
-      // 下一帧重新触发动画（允许连续点击）
       wx.nextTick(() => {
         this.setData({
           favBurst: true
@@ -248,11 +292,8 @@ Component({
             favBurst: false
           })
           this.favBurstTimer = null
-          this.favBusy = false
-        }, 1000)
+        }, 900)
       })
-      wx.vibrateShort({ type: 'light' })
-      this.data.eventChannel.emit('tapToAddSong')
     },
     // 封面图加载失败时回退本地占位图
     onPicError() {

@@ -41,6 +41,7 @@ const SAFE_RETRY_ACTIONS = [
   'message/back',
   'song/songList',
   'song/addMySong',
+  'song/checkMySong',
   'song/mySongList',
   'song/deleteMySong',
   'song/toggleMySongChildren',
