@@ -178,11 +178,13 @@ Page({
       this.notifySongEnded(songInfo)
     })
     this.data.bgPlayer.onError(() => {
-      if (Date.now() < this.data.playerSwitchingUntil) {
-        return
-      }
       const songInfo = this.data.songInfo
       if (!songInfo || !songInfo.song) {
+        return
+      }
+      if (Date.now() < this.data.playerSwitchingUntil) {
+        // 宽限期内报错可能是换源瞬态：不立即重试，但安排宽限结束后的快速校验，不再干等 watchdog
+        this.scheduleGraceErrorCheck(songInfo)
         return
       }
       // 直链可能过期：先重新点播一次，仍失败再自动切歌
@@ -586,9 +588,21 @@ Page({
     this.data.carEventChannel && this.data.carEventChannel.emit('sendSongInfo', this.data.songInfo)
     this.refreshCarFavState()
     this.retryPickSongId = ''
+    // 切歌即放弃上一首尚未完成的点播，避免其占用通道导致新歌点播被拒；同曲恢复保留在途点播
+    if (this.pendingPick && this.pendingPickSongId !== msg._id) {
+      if (typeof this.pendingPick.cancel === 'function') {
+        this.pendingPick.cancel()
+      }
+      this.pendingPick = null
+      this.pendingPickSongId = ''
+    }
     const directUrl = this.getDirectPlaybackUrl(msg.song.url)
     if (directUrl) {
       this.startPlayback(msg, directUrl)
+      return
+    }
+    // 同曲已有在途点播（如解析中关闭又打开音乐）：等它完成即可，不重复发起
+    if (this.pendingPick && this.pendingPickSongId === msg._id) {
       return
     }
     this.resolveAndPlay(msg)
@@ -597,6 +611,10 @@ Page({
     if (this.playbackGuardTimer) {
       clearTimeout(this.playbackGuardTimer)
       this.playbackGuardTimer = null
+    }
+    if (this.graceErrorTimer) {
+      clearTimeout(this.graceErrorTimer)
+      this.graceErrorTimer = null
     }
   },
   // 新直链长时间没有真正开始播放时，主动重试一次并最终自动切歌
@@ -618,6 +636,34 @@ Page({
       this.retryPickSongId = msg._id
       this.repickAndPlay(msg)
     }, PLAYER_GUARD_TIMEOUT)
+  },
+  // 宽限期内收到报错时安排快速校验：宽限结束仍未真正开播则立即重新点播，
+  // 避免过期直链的报错被宽限期吞掉后干等 6 秒 watchdog；真正开播会清除本定时器
+  scheduleGraceErrorCheck(msg) {
+    if (this.graceErrorTimer) {
+      return
+    }
+    const delay = Math.max(0, this.data.playerSwitchingUntil - Date.now()) + 500
+    this.graceErrorTimer = setTimeout(() => {
+      this.graceErrorTimer = null
+      if (!this.data.songInfo || this.data.songInfo._id !== msg._id || !this.data.isMusicPlaying || this.playbackConfirmed) {
+        return
+      }
+      if (this.data.failedSongPassId === msg._id) {
+        return
+      }
+      // 新歌的首次点播可能仍在途（旧音源的报错落在宽限期内）：等它完成，不重复发起
+      if (this.pendingPick && this.pendingPickSongId === msg._id) {
+        return
+      }
+      if (this.retryPickSongId !== msg._id) {
+        this.retryPickSongId = msg._id
+        this.repickAndPlay(msg)
+        return
+      }
+      this.retryPickSongId = ''
+      this.autoPassUnavailableSong(msg)
+    }, delay)
   },
   // 是否为可直接交给播放器的音频直链（排除历史旧接口地址）
   getDirectPlaybackUrl(url) {
@@ -694,8 +740,15 @@ Page({
   },
   // 播放失败后重新点播一次，拿到新直链再播放
   repickAndPlay(msg) {
-    jusicWsApi.pickSong(msg.song).then((pickedSong) => {
-      if (!this.data.songInfo || this.data.songInfo._id !== msg._id) {
+    const pending = jusicWsApi.pickSong(msg.song)
+    this.pendingPick = pending
+    this.pendingPickSongId = msg._id
+    pending.then((pickedSong) => {
+      if (this.pendingPick === pending) {
+        this.pendingPick = null
+        this.pendingPickSongId = ''
+      }
+      if (!this.data.songInfo || this.data.songInfo._id !== msg._id || this.data.failedSongPassId === msg._id) {
         return
       }
       const url = this.getDirectPlaybackUrl(pickedSong.url)
@@ -708,6 +761,10 @@ Page({
       this.applyPickedSong(msg, pickedSong, url)
       this.startPlayback(msg, url, false)
     }).catch(() => {
+      if (this.pendingPick === pending) {
+        this.pendingPick = null
+        this.pendingPickSongId = ''
+      }
       if (!this.data.songInfo || this.data.songInfo._id !== msg._id) {
         return
       }
@@ -716,13 +773,24 @@ Page({
   },
   // 没有直链时通过 WS /music/pick 获取播放地址
   resolveAndPlay(msg) {
-    jusicWsApi.ensurePlayableSong(msg.song).then((pickedSong) => {
-      if (!this.data.songInfo || this.data.songInfo._id !== msg._id) {
+    const pending = jusicWsApi.ensurePlayableSong(msg.song)
+    this.pendingPick = pending
+    this.pendingPickSongId = msg._id
+    pending.then((pickedSong) => {
+      if (this.pendingPick === pending) {
+        this.pendingPick = null
+        this.pendingPickSongId = ''
+      }
+      if (!this.data.songInfo || this.data.songInfo._id !== msg._id || this.data.failedSongPassId === msg._id) {
         return
       }
       this.applyPickedSong(msg, pickedSong, pickedSong.url)
       this.startPlayback(msg, pickedSong.url)
     }).catch(() => {
+      if (this.pendingPick === pending) {
+        this.pendingPick = null
+        this.pendingPickSongId = ''
+      }
       if (!this.data.songInfo || this.data.songInfo._id !== msg._id) {
         return
       }

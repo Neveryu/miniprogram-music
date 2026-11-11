@@ -1032,7 +1032,8 @@ const addBackupSong = async (song, source, index) => {
       : AUTO_SONG_USER
   const queueItem = {
     room_id: DEFAULT_ROOM_ID,
-    song,
+    // 收藏/缓存里存的签名直链会过期：自动入队一律不带直链，由客户端播放前 WS 点播取新地址
+    song: { ...song, url: '' },
     user: autoUser,
     sort_time: Date.now() + index,
     auto_added: true,
@@ -1392,19 +1393,10 @@ const setChildrenMode = async (payload, user) => {
   if (!song) {
     return success({ children_mode: true, has_song: false }, '儿歌模式已开启，正在准备儿歌')
   }
-  const queueItem = {
-    room_id: DEFAULT_ROOM_ID,
-    song,
-    user: { ...AUTO_SONG_USER, user_name: '收藏歌曲' },
-    sort_time: Date.now(),
-    auto_added: true,
-    backup_source: 'favorite',
-    created_at: db.serverDate()
-  }
-  const created = await db.collection('play_queue').add({ data: queueItem })
+  const queueItem = await addBackupSong(song, 'favorite', 0)
   await db.collection('rooms').where({ room_id: DEFAULT_ROOM_ID }).update({
     data: {
-      current_song: _.set({ ...queueItem, _id: created._id, since: Math.floor(Date.now() / 1000) }),
+      current_song: _.set({ ...queueItem, since: Math.floor(Date.now() / 1000) }),
       recent_played: buildRecentPlayed(room, song),
       updated_at: db.serverDate()
     }

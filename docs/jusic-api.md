@@ -117,8 +117,11 @@ POST musicApp { action: "song/getCovers", payload: { mids: ["186016", ...] } }
 
 直链带签名，可能过期。播放器触发 `onError` 时：
 
-- 先重新 `/music/pick` 一次并重试播放；
+- 切歌宽限期内的报错可能是换源瞬态：宽限结束后快速校验，仍未开播立即重新点播，不干等 6 秒 watchdog；
+- 其余情况先重新 `/music/pick` 一次并重试播放；
 - 仍失败则调用 `song/autoPass` 自动切歌。
+
+切歌时会取消上一首在途点播（点播 Promise 支持 `.cancel`），避免其占用通道阻塞新歌点播；同曲恢复保留在途点播，不重复发起。
 
 `validateSong` 会丢弃历史数据中的 Meting 接口地址，只保留可用的音频直链，避免把失效地址交给播放器。云函数只接受已知音乐 CDN 域名（`music.126.net`、`qqmusic.qq.com`、`gtimg.cn`、`qq.com` 等）的 HTTPS 直链，客户端伪造的任意外部音频地址会被清空。
 
@@ -151,7 +154,7 @@ https://music.163.com/api/song/lyric?id={mid}&lv=1&kv=1&tv=-1
    - 房间 `backup_songs` 缓存（仅正常模式）。
 5. 收藏和缓存候选只保留 `netease` / `tencent`，排除 `kugou`、`wydt`。
 6. 正常模式按 `favorite:cache:prompt = 5:3:2`、儿歌模式按 `favorite:children = 3:2` 加权混入队列。
-7. 入队项带 `auto_added: true` 和 `backup_source`，播放时再通过 WS 点播获取直链；队列硬上限 100 首。
+7. 入队项带 `auto_added: true` 和 `backup_source`，并剥离存储直链（签名会过期），播放时由客户端 WS 点播获取新地址；队列硬上限 100 首。
 
 定时触发器 `refillPlaybackQueue` 没有客户端参与，正常模式只用收藏与缓存，儿歌模式只用儿歌收藏。
 
@@ -172,7 +175,7 @@ https://music.163.com/api/song/lyric?id={mid}&lv=1&kv=1&tv=-1
 - QQ 音乐播放依赖 `/music/pick`；需要登录、购买或受地区版权限制的歌曲可能无法获取直链。
 - 电台歌曲支持搜索、点歌和播放，但不提供歌词，也不进入自动补歌候选。
 - 歌词仅覆盖网易云；歌词接口不可用时页面显示暂无歌词。
-- 播放直链带时效，失效后依赖播放器错误回调重新点播或自动切歌。
+- 播放直链带时效：自动补歌入队不带存储直链，播放前重新点播；其余场景失效后依赖播放器错误回调重新点播或自动切歌。
 - 服务端搜索能力依赖 jusic-serve 可用性；接口异常时搜索和点歌会提示失败。
 
 ## 10. 参考资料

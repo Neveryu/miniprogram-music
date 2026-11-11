@@ -785,7 +785,12 @@ function pickSong(song, sourceCode) {
   if (!id) {
     return Promise.reject(new Error('歌曲标识无效'))
   }
+  let cancelled = false
   const sendPick = (attempt) => ensureConnected().then(() => new Promise((resolve, reject) => {
+    if (cancelled) {
+      reject(new Error('点播已取消'))
+      return
+    }
     if (currentPick) {
       reject(new Error('上一次点播尚未完成，请稍候'))
       return
@@ -823,7 +828,15 @@ function pickSong(song, sourceCode) {
     }
     throw error
   })
-  return sendPick(1)
+  const promise = sendPick(1)
+  // 切歌时调用方取消被放弃的点播，释放 currentPick，避免阻塞新歌点播。
+  // 这里不能用取消错误码：sendPick 会把连接重建类取消自动重发，被放弃的点播不应重发
+  return attachCancellation(promise, () => {
+    cancelled = true
+    if (currentPick && currentPick.program === song) {
+      settlePick(null, new Error('点播已取消'))
+    }
+  })
 }
 
 /** 点歌或播放前确保歌曲带有可用的直链：已有直链直接返回，force 或缺失时走 WS 点播获取 */
