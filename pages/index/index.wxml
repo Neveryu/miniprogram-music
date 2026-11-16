@@ -83,11 +83,17 @@
   <!-- 播放器(顶部固定长条) -->
   <view class="bbbug_player {{roomInfo.children_mode ? 'children-player' : ''}}" bindtap="showSongMenu" bindlongpress="setSimplePlayer" wx:if="{{!simplePlayer}}">
     <view wx:if="{{songInfo}}">
+      <image class="bbbug_player_bgblur" src="{{playerPicError ? '/res/image/nohead.jpg' : helper.getStaticUrl(songInfo.song.pic)}}" mode="aspectFill"></image>
+      <view class="bbbug_player_bgmask"></view>
       <image class="bbbug_player_img {{isMusicPlaying ? 'music-cover-playing' : ''}}" src="{{playerPicError ? '/res/image/nohead.jpg' : helper.getStaticUrl(songInfo.song.pic)}}" mode="widthFix" binderror="onPlayerPicError"></image>
       <image class="bbbug_player_outer" src="/res/image/player_bg.png" mode="widthFix"></image>
       <image class="bbbug_player_bar" src="/res/image/player_bar.png" mode="widthFix"></image>
       <view class="bbbug_player_song">{{songInfo.song.name}} - {{songInfo.song.singer}}</view>
-      <view class="bbbug_player_singer">{{lrcString}}</view>
+      <view class="bbbug_player_singer">
+        <view wx:for="{{[lrcAnimKey]}}" wx:key="*this" class="bbbug_player_lrc-line">
+          <view class="bbbug_player_lrc-text {{lrcScroll ? 'bbbug_player_lrc-scroll' : ''}}" style="--lrc-dist: -{{lrcScrollDist}}px; animation-duration: {{lrcScrollDur}}s;">{{lrcString}}</view>
+        </view>
+      </view>
       <view class="bbbug_player_user">点歌人 {{songInfo.user.user_name}}</view>
     </view>
     <view wx:if="{{!songInfo}}" class="bbbug_player_empty">

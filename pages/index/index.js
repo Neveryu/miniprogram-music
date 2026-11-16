@@ -34,6 +34,10 @@ Page({
     musicLrcObj: [],
     lrcString: '',
     lrcIndex: -1,
+    lrcAnimKey: 0,
+    lrcScroll: false,
+    lrcScrollDist: 0,
+    lrcScrollDur: 6,
     isScrollEnabled: true,
     emojiList: [],
     imageList: [],
@@ -161,9 +165,14 @@ Page({
       if (index < 0 || index === this.data._lrcIndex) {
         return
       }
+      const lineLyric = this.data.musicLrcObj[index].lineLyric
       this.setData({
-        lrcString: this.data.musicLrcObj[index].lineLyric,
-        lrcIndex: index
+        lrcString: lineLyric,
+        lrcIndex: index,
+        lrcAnimKey: this.data.lrcAnimKey + 1,
+        lrcScroll: false
+      }, () => {
+        this.measureLrcOverflow(index, lineLyric)
       })
     })
     this.data.bgPlayer.onEnded(() => {
@@ -243,8 +252,14 @@ Page({
   },
   setSimplePlayer() {
     wx.vibrateShort({ type: 'light' })
+    const simplePlayer = !this.data.simplePlayer
     this.setData({
-      simplePlayer: !this.data.simplePlayer
+      simplePlayer
+    }, () => {
+      // 切回长条播放器时歌词节点重建，重新测量当前行是否需要横向滚动
+      if (!simplePlayer && this.data._lrcString) {
+        this.measureLrcOverflow(this.data._lrcIndex, this.data._lrcString)
+      }
     })
   },
   /**
@@ -469,7 +484,8 @@ Page({
             songInfo: null,
             musicLrcObj: [],
             lrcString: '',
-            lrcIndex: -1
+            lrcIndex: -1,
+            lrcScroll: false
           })
         }
       },
@@ -509,7 +525,8 @@ Page({
       this.setData({
         musicLrcObj: [],
         lrcString: '',
-        lrcIndex: -1
+        lrcIndex: -1,
+        lrcScroll: false
       })
       return
     }
@@ -518,14 +535,16 @@ Page({
       this.setData({
         musicLrcObj: [],
         lrcString: '',
-        lrcIndex: -1
+        lrcIndex: -1,
+        lrcScroll: false
       })
       return
     }
     this.setData({
       musicLrcObj: [],
       lrcString: '歌词读取中...',
-      lrcIndex: -1
+      lrcIndex: -1,
+      lrcScroll: false
     })
     app.request({
       url: 'song/getLrc',
@@ -539,17 +558,44 @@ Page({
           musicLrcObj: lines,
           // 前奏阶段保持空白，由 onTimeUpdate 在命中第一行后再填入
           lrcString: '',
-          lrcIndex: -1
+          lrcIndex: -1,
+          lrcScroll: false
         })
       },
       error: () => {
         this.setData({
           musicLrcObj: [],
           lrcString: '',
-          lrcIndex: -1
+          lrcIndex: -1,
+          lrcScroll: false
         })
         return true
       }
+    })
+  },
+  // 长句超出播放器宽度时改为横向滚动：测量歌词自然宽度与容器宽度之差
+  measureLrcOverflow(index, text) {
+    if (this.data.simplePlayer || !text || this.data._lrcIndex !== index || this.data._lrcString !== text) {
+      return
+    }
+    const query = wx.createSelectorQuery()
+    query.select('.bbbug_player_singer').boundingClientRect()
+    query.select('.bbbug_player_lrc-text').boundingClientRect()
+    query.exec((res) => {
+      const box = res && res[0]
+      const line = res && res[1]
+      if (!box || !line || this.data._lrcIndex !== index || this.data._lrcString !== text) {
+        return
+      }
+      const dist = Math.ceil(line.width - box.width)
+      if (dist <= 4) {
+        return
+      }
+      this.setData({
+        lrcScroll: true,
+        lrcScrollDist: dist,
+        lrcScrollDur: Math.min(12, Math.max(4, dist / 30 + 2.4))
+      })
     })
   },
   // 播放音乐；resumePosition 为同曲恢复的秒数，null 表示按歌曲开始时间定位
@@ -726,6 +772,7 @@ Page({
       'songInfo.song.url': url,
       'songInfo.song.pic': pic
     })
+    this.pushCarSongPic(msg)
     if (!pic) {
       fillSongCovers([msg.song]).then((songs) => {
         const cover = songs[0] && songs[0].pic
@@ -735,8 +782,17 @@ Page({
         this.setData({ 'songInfo.song.pic': cover })
         this.data.bgPlayer.coverImgUrl = cover
         this.data.bgPlayer.webUrl = cover
+        this.pushCarSongPic(msg)
       })
     }
+  },
+  // 封面常在切歌后才异步拿到：单独推送给驾驶页，不重发整首歌曲信息（避免重置收藏按钮状态）
+  pushCarSongPic(msg) {
+    const pic = msg && msg.song && msg.song.pic
+    if (!pic || !this.data.carEventChannel) {
+      return
+    }
+    this.data.carEventChannel.emit('sendSongPic', { mid: String(msg.song.mid), pic })
   },
   // 播放失败后重新点播一次，拿到新直链再播放
   repickAndPlay(msg) {
@@ -951,7 +1007,8 @@ Page({
     this.setData({
       failedSongPassId: msg._id,
       musicLrcObj: [],
-      lrcString: ''
+      lrcString: '',
+      lrcScroll: false
     })
     // 游客不能推进公共队列，不发起会触发登录弹窗的系统请求
     if (!this.data.userInfo) {

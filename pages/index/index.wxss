@@ -69,6 +69,27 @@ movable-view image {
   border-radius: 100%;
 }
 
+/* 封面氛围背景：模糊暗化铺满整条，scale 放大裁掉模糊边缘 */
+.bbbug_player_bgblur {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  filter: blur(20px) brightness(0.55) saturate(1.15);
+  transform: scale(1.35);
+}
+
+/* 右侧深色渐晕：保证歌名/歌词/点歌人在任何封面色下的对比度 */
+.bbbug_player_bgmask {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, rgba(10, 12, 18, 0.18) 0%, rgba(10, 12, 18, 0.66) 55%, rgba(10, 12, 18, 0.78) 100%);
+}
+
 .music-cover-playing {
   animation: musicCoverRotate 18s linear infinite;
 }
@@ -138,6 +159,7 @@ movable-view image {
   white-space: nowrap;
   text-overflow: ellipsis;
   overflow: hidden;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
 }
 
 .bbbug_player_user {
@@ -145,9 +167,11 @@ movable-view image {
   right: 15px;
   bottom: 10px;
   font-size: 12px;
+  color: rgba(255, 255, 255, 0.85);
   white-space: nowrap;
   text-overflow: ellipsis;
   overflow: hidden;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
 }
 
 /* ===== 儿歌模式播放器特效：彩色流光 + 跑马灯 ===== */
@@ -159,6 +183,12 @@ movable-view image {
   background: linear-gradient(120deg, #6a5bd8 0%, #c4458f 20%, #d9862e 40%, #2e9e73 60%, #3a7bd5 80%, #6a5bd8 100%);
   background-size: 400% 400%;
   animation: fadeIn 0.3s, childrenFlowBg 8s ease-in-out infinite, childrenGlow 2.6s ease-in-out infinite;
+}
+
+/* 儿歌模式保留彩虹流光，不叠封面氛围层 */
+.children-player .bbbug_player_bgblur,
+.children-player .bbbug_player_bgmask {
+  display: none;
 }
 
 /* 圆形悬浮播放器：同样的流光配色 */
@@ -254,13 +284,53 @@ movable-view image {
 .bbbug_player_singer {
   position: absolute;
   left: 120px;
-  top: 40px;
+  top: 44px;
   right: 20px;
-  font-size: 14px;
-  color: #ccc;
+  font-size: 16px;
+  font-weight: 500;
+  color: #fff;
+  letter-spacing: 0.3px;
   white-space: nowrap;
-  text-overflow: ellipsis;
   overflow: hidden;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.7);
+}
+
+/* 外层按 lrcAnimKey 重建，每行歌词触发一次入场动画 */
+.bbbug_player_lrc-line {
+  display: inline-block;
+  white-space: nowrap;
+  animation: lrcLineIn 0.35s ease-out;
+}
+
+.bbbug_player_lrc-text {
+  display: inline-block;
+}
+
+/* 长句横向滚动：距离由 --lrc-dist 提供，时长由内联 animation-duration 覆盖 */
+.bbbug_player_lrc-scroll {
+  animation: lrcMarquee 6s ease-in-out infinite alternate;
+}
+
+@keyframes lrcLineIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes lrcMarquee {
+  0%, 12% {
+    transform: translateX(0);
+  }
+
+  88%, 100% {
+    transform: translateX(var(--lrc-dist));
+  }
 }
 
 .bbbug_player_userhead {

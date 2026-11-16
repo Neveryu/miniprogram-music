@@ -62,6 +62,17 @@ Component({
           favBurst: false
         })
       })
+      // 首页异步补全的封面：mid 与当前歌曲不符（切歌竞态）时丢弃；重置 picError 让新地址重新加载
+      this.data.eventChannel.on('sendSongPic', (payload) => {
+        const song = this.data.songInfo && this.data.songInfo.song
+        if (!payload || !song || String(payload.mid) !== String(song.mid) || !payload.pic) {
+          return
+        }
+        this.setData({
+          'songInfo.song.pic': payload.pic,
+          picError: false
+        })
+      })
       this.data.eventChannel.on('sendLrcString', (str) => {
         this.setData({
           lrcString: str
